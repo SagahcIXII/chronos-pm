@@ -119,7 +119,7 @@ export default function DashboardPage() {
           {activeProject.name}
         </h1>
         <p style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>
-          {activeProject.code} · {activeProject.responsible} · {activeProject.startDate ? fd(activeProject.startDate.slice(0,10)) : '?'} → {activeProject.endDate ? fd(activeProject.endDate.slice(0,10)) : '?'}
+          {activeProject.code} · {(activeProject as any).responsible} · {activeProject.startDate ? fd(activeProject.startDate.slice(0,10)) : '?'} → {activeProject.endDate ? fd(activeProject.endDate.slice(0,10)) : '?'}
         </p>
       </div>
 
