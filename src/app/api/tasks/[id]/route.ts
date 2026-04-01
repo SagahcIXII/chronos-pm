@@ -59,7 +59,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
     // Remove predecessoras antigas e recria
     if (predecessorIds !== undefined) {
-      await prisma.taskDependency.deleteMany({ where: { taskId: params.id } })
+      await prisma.taskDependency.deleteMany({ where: { successorId: params.id } })
     }
 
     const task = await prisma.task.update({
@@ -100,7 +100,7 @@ export async function DELETE(_: NextRequest, { params }: { params: { id: string 
   const existing = await prisma.task.findUnique({ where: { id: params.id } })
   if (!existing) return NextResponse.json({ error: 'Não encontrada' }, { status: 404 })
 
-  await prisma.taskDependency.deleteMany({ where: { OR: [{ taskId: params.id }, { predecessorId: params.id }] } })
+  await prisma.taskDependency.deleteMany({ where: { OR: [{ successorId: params.id }, { predecessorId: params.id }] } })
   await prisma.task.delete({ where: { id: params.id } })
   await recalculateProjectProgress(existing.projectId)
 
