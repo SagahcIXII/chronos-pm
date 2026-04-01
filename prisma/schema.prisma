@@ -1,0 +1,143 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("VIEWER")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  projects     Project[]
+  taskComments TaskComment[]
+  taskHistory  TaskHistory[]
+  @@map("users")
+}
+
+model Project {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  name         String
+  description  String?
+  responsible  String
+  ownerId      String
+  startDate    DateTime
+  endDate      DateTime
+  status       String   @default("IN_PROGRESS")
+  progress     Float    @default(0)
+  observations String?
+  archived     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  owner        User     @relation(fields: [ownerId], references: [id])
+  tasks        Task[]
+  baseline     Baseline?
+  @@map("projects")
+}
+
+model Baseline {
+  id        String   @id @default(cuid())
+  projectId String   @unique
+  snapshot  String
+  createdAt DateTime @default(now())
+  createdBy String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  @@map("baselines")
+}
+
+model Task {
+  id           String    @id @default(cuid())
+  projectId    String
+  parentId     String?
+  order        Int       @default(0)
+  level        Int       @default(0)
+  isGroup      Boolean   @default(false)
+  name         String
+  description  String?
+  responsible  String?
+  weight       Float     @default(1)
+  plannedStart DateTime?
+  plannedEnd   DateTime?
+  actualStart  DateTime?
+  actualEnd    DateTime?
+  status       String    @default("NOT_STARTED")
+  priority     String    @default("MEDIUM")
+  progress     Float     @default(0)
+  isMilestone  Boolean   @default(false)
+  isCritical   Boolean   @default(false)
+  observations String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent       Task?     @relation("TaskChildren", fields: [parentId], references: [id])
+  children     Task[]    @relation("TaskChildren")
+  comments     TaskComment[]
+  history      TaskHistory[]
+  attachments  TaskAttachment[]
+  predecessors TaskDependency[] @relation("TaskSuccessor")
+  successors   TaskDependency[] @relation("TaskPredecessor")
+  @@index([projectId])
+  @@index([parentId])
+  @@map("tasks")
+}
+
+model TaskDependency {
+  id            String  @id @default(cuid())
+  predecessorId String
+  successorId   String
+  type          String  @default("FINISH_TO_START")
+  lag           Int     @default(0)
+  predecessor   Task    @relation("TaskPredecessor", fields: [predecessorId], references: [id], onDelete: Cascade)
+  successor     Task    @relation("TaskSuccessor", fields: [successorId], references: [id], onDelete: Cascade)
+  @@unique([predecessorId, successorId])
+  @@map("task_dependencies")
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  authorId  String
+  text      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id])
+  @@index([taskId])
+  @@map("task_comments")
+}
+
+model TaskHistory {
+  id         String   @id @default(cuid())
+  taskId     String
+  authorId   String
+  changeType String
+  field      String?
+  oldValue   String?
+  newValue   String?
+  note       String?
+  createdAt  DateTime @default(now())
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author     User     @relation(fields: [authorId], references: [id])
+  @@index([taskId])
+  @@map("task_history")
+}
+
+model TaskAttachment {
+  id        String   @id @default(cuid())
+  taskId    String
+  name      String
+  url       String
+  size      Int?
+  mimeType  String?
+  createdAt DateTime @default(now())
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  @@map("task_attachments")
+}
