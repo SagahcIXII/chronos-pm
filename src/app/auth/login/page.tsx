@@ -1,10 +1,9 @@
 'use client'
-// src/app/auth/login/page.tsx
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter()
   const params = useSearchParams()
   const [email, setEmail] = useState('admin@bd7d.com.br')
@@ -21,83 +20,76 @@ export default function LoginPage() {
     })
     setLoading(false)
     if (res?.error) {
-      setError('Email ou senha incorretos.')
+      setError('Email ou senha inválidos')
     } else {
-      router.push('/dashboard')
+      router.push('/projects')
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-bg relative overflow-hidden">
-      {/* Grid bg */}
-      <div className="absolute inset-0 opacity-20"
-        style={{
-          backgroundImage: 'linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)',
-          backgroundSize: '40px 40px',
-        }}
-      />
-      {/* Glow */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(59,130,246,0.15),transparent)]" />
-
-      <div className="relative w-full max-w-sm">
-        <div className="card p-10 shadow-2xl">
-          {/* Logo */}
-          <div className="mb-8">
-            <div className="text-display text-3xl font-black text-[var(--text)] mb-1">
-              Chronos PM
-            </div>
-            <p className="text-xs text-[var(--text3)] uppercase tracking-widest">
-              Gestão de Cronograma · BD7D Solutions
-            </p>
-          </div>
-
-          {error && (
-            <div className="alert alert-danger mb-5">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="form-label">Email</label>
-              <input
-                type="email"
-                className="form-control"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="admin@bd7d.com.br"
-                autoFocus
-                required
-              />
-            </div>
-            <div>
-              <label className="form-label">Senha</label>
-              <input
-                type="password"
-                className="form-control"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••••"
-                required
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn btn-primary w-full justify-center py-2.5 mt-2"
-            >
-              {loading ? 'Entrando...' : 'Entrar no Sistema'}
-            </button>
-          </form>
-
-          <p className="text-center text-xs text-[var(--text3)] mt-6">
-            admin@bd7d.com.br · chronos2025
-          </p>
+    <div style={{
+      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'var(--bg)', padding: 16,
+    }}>
+      <div style={{
+        width: '100%', maxWidth: 400, background: 'var(--surface)',
+        border: '1px solid var(--border)', borderRadius: 16, padding: 40,
+      }}>
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <h1 style={{ fontFamily: 'Syne,sans-serif', fontSize: 28, fontWeight: 900, color: 'var(--text)', marginBottom: 4 }}>
+            Chronos PM
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--text3)' }}>BD7D Solutions Engenharia</p>
         </div>
+
+        {error && (
+          <div style={{
+            background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
+            color: '#f87171', borderRadius: 8, padding: '10px 14px', marginBottom: 20, fontSize: 13,
+          }}>{error}</div>
+        )}
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <label style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600, display: 'block', marginBottom: 6 }}>EMAIL</label>
+            <input
+              className="form-control"
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600, display: 'block', marginBottom: 6 }}>SENHA</label>
+            <input
+              className="form-control"
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+            />
+          </div>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={loading}
+            style={{ marginTop: 8, height: 44, fontSize: 15, fontWeight: 700 }}
+          >
+            {loading ? 'Entrando…' : 'Entrar'}
+          </button>
+        </form>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text3)' }}>Carregando…</div>}>
+      <LoginForm />
+    </Suspense>
   )
 }
