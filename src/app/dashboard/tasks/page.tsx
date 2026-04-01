@@ -50,8 +50,8 @@ const isDelayed = (t: Task) =>
   t.status !== 'COMPLETED' && t.plannedEnd && t.plannedEnd < new Date().toISOString().slice(0, 10)
 
 // ── Modal ──────────────────────────────────────────────────────────────────
-function TaskModal({ task, tasks, onClose, onSaved }: {
-  task: Task | null, tasks: Task[], onClose: () => void, onSaved: () => void
+function TaskModal({ task, tasks, projectId, onClose, onSaved }: {
+  task: Task | null, tasks: Task[], projectId: string, onClose: () => void, onSaved: () => void
 }) {
   const { lang } = useLang()
   const [form, setForm] = useState({ ...EMPTY_FORM })
@@ -92,7 +92,7 @@ function TaskModal({ task, tasks, onClose, onSaved }: {
     try {
       const payload = {
         ...form,
-        projectId: PROJECT_ID,
+        projectId: projectId,
         parentId: form.parentId || null,
         plannedStart: form.plannedStart || undefined,
         plannedEnd: form.plannedEnd || undefined,
@@ -332,6 +332,7 @@ export default function TasksPage() {
         <TaskModal
           task={modalTask === 'new' ? null : modalTask}
           tasks={tasks}
+          projectId={PROJECT_ID}
           onClose={() => setModalTask(null)}
           onSaved={() => { setModalTask(null); load() }}
         />
