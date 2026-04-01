@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useLang } from '@/lib/i18n'
+import { useProject } from '@/lib/projectContext'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface Task {
@@ -34,7 +35,7 @@ const EMPTY_FORM = {
   parentId: '', observations: '', predecessorIds: [] as string[],
 }
 
-const PROJECT_ID = 'cmnfdkigp0003pxj805frieyd'
+
 
 const fmt = (s?: string | null) => {
   if (!s) return '—'
@@ -266,6 +267,8 @@ function TaskModal({ task, tasks, onClose, onSaved }: {
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function TasksPage() {
   const { lang, t } = useLang()
+  const { activeProject } = useProject()
+  const PROJECT_ID = activeProject?.id ?? ''
   const tk = t.tasks
   const pt = lang === 'pt'
 
