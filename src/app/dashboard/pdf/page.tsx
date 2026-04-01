@@ -156,7 +156,7 @@ export default function PDFPage() {
   const [emailMsg, setEmailMsg] = useState('')
 
   const tr = T[lang as Lang]
-  const projectName = lang==='pt' ? activeProject.name : activeProject.nameEn
+  const projectName = activeProject.name
 
   const sendEmail = async () => {
     if (!emailTo.trim()) { setEmailMsg(lang==='pt'?'Informe pelo menos um destinatário.':'Please enter at least one recipient.'); setEmailStatus('error'); return }
@@ -170,7 +170,7 @@ export default function PDFPage() {
           subject: emailSubject || `${tr.emailSubjectDefault} — ${activeProject.code}`,
           projectCode: activeProject.code,
           projectName,
-          senderName: senderName || activeProject.manager,
+          senderName: senderName || (activeProject as any).responsible,
           lang,
           reportHtml: '',
         }),
@@ -225,9 +225,9 @@ export default function PDFPage() {
   }
 
   const fields = [
-    ['Projeto', lang==='pt' ? activeProject.name : activeProject.nameEn],
+    ['Projeto', activeProject.name],
     ['Código', activeProject.code],
-    [lang==='pt'?'Responsável':'Manager', activeProject.manager],
+    [lang==='pt'?'Responsável':'Manager', (activeProject as any).responsible],
     [lang==='pt'?'Início':'Start', lang==='pt'?'01/02/2025':'02/01/2025'],
     [lang==='pt'?'Término':'End', lang==='pt'?'30/09/2025':'09/30/2025'],
     [lang==='pt'?'Avanço':'Progress', `${activeProject.progress}%`],
