@@ -19,6 +19,39 @@ function monthLabel(date: Date, lang: string): string {
   return date.toLocaleDateString(lang === 'pt' ? 'pt-BR' : 'en-US', { month: 'short', year: '2-digit' })
 }
 
+// Planejado: passado/hoje = proporcional; futuro = degraus (nunca decresce)
+function calcPlannedDash(leaves: Task[], totalW: number, pointDate: Date, pointISO: string): number {
+  const isFuture = pointDate > todayDate
+  let plannedDone = 0
+  leaves.forEach(t => {
+    const w = t.weight || 1
+    if (t.plannedEnd && t.plannedEnd <= pointISO) {
+      plannedDone += w
+    } else if (!isFuture && t.plannedStart && t.plannedStart <= pointISO && t.plannedEnd && t.plannedEnd > pointISO) {
+      const tStart = new Date(t.plannedStart)
+      const tEnd = new Date(t.plannedEnd)
+      const totalDays = (tEnd.getTime() - tStart.getTime()) / 86400000
+      const elapsedDays = Math.max(0, (pointDate.getTime() - tStart.getTime()) / 86400000)
+      plannedDone += w * Math.min(1, totalDays > 0 ? elapsedDays / totalDays : 0)
+    }
+  })
+  return totalW ? Math.round(plannedDone / totalW * 100) : 0
+}
+
+// Executado: soma real de tarefas concluídas + progresso das em andamento
+function calcExecutedDash(leaves: Task[], totalW: number, refISO: string): number {
+  let execDone = 0
+  leaves.forEach(t => {
+    const w = t.weight || 1
+    const endRef = t.actualEnd || (t.status === 'COMPLETED' ? t.plannedEnd : null)
+    if (endRef && endRef <= refISO) execDone += w
+    else if (t.status === 'IN_PROGRESS' && t.plannedStart && t.plannedStart <= refISO)
+      execDone += w * (t.progress / 100)
+  })
+  return totalW ? Math.round(execDone / totalW * 100) : 0
+}
+
+// Gráfico semanal: linha "Hoje" no dia exato, sem barriga na curva planejada
 function computeCurveData(tasks: Task[], lang: string) {
   const leaves = tasks.filter(t => !t.isGroup)
   if (!leaves.length) return { rows: [], todayLabel: '' }
@@ -28,60 +61,46 @@ function computeCurveData(tasks: Task[], lang: string) {
 
   const minD = dates.reduce((a, b) => a < b ? a : b)
   const maxD = dates.reduce((a, b) => a > b ? a : b)
-  const start = new Date(minD.slice(0, 7) + '-01')
-  const end = new Date(maxD.slice(0, 7) + '-01')
-  end.setMonth(end.getMonth() + 1)
+
+  const start = new Date(minD)
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7)) // recua para segunda
+  const end = new Date(maxD)
+  end.setDate(end.getDate() + 7)
 
   const totalW = leaves.reduce((s, t) => s + (t.weight || 1), 0)
   const rows: any[] = []
   const cur = new Date(start)
 
-  const todayMonth = new Date(todayISO.slice(0, 7) + '-01')
-  const todayLabel = monthLabel(todayMonth, lang)
+  const weekLabel = (d: Date) => {
+    const dd = String(d.getDate()).padStart(2, '0')
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    return lang === 'pt' ? `${dd}/${mm}` : `${mm}/${dd}`
+  }
+  const todayLabel = weekLabel(new Date(todayISO))
 
   while (cur <= end) {
-    const endOfMonth = new Date(cur.getFullYear(), cur.getMonth() + 1, 0)
-    const startOfMonth = new Date(cur.getFullYear(), cur.getMonth(), 1)
-    const endStr = endOfMonth.toISOString().slice(0, 10)
-    const label = monthLabel(new Date(cur), lang)
+    const pointDate = new Date(cur)
+    const pointISO = pointDate.toISOString().slice(0, 10)
+    const isFuture = pointDate > todayDate
+    const isToday = pointISO === todayISO
 
-    const isFuture = startOfMonth > todayDate
-    const isCurrent = !isFuture && endOfMonth >= todayDate
+    const plannedCumulative = calcPlannedDash(leaves, totalW, pointDate, pointISO)
+    const executedCumulative = !isFuture ? calcExecutedDash(leaves, totalW, pointISO) : null
 
-    // Planejado: proporcional ao tempo decorrido para tarefas em andamento
-    let plannedDone = 0
-    leaves.forEach(t => {
-      const w = t.weight || 1
-      if (t.plannedEnd && t.plannedEnd <= endStr) {
-        plannedDone += w
-      } else if (!isFuture && t.plannedStart && t.plannedStart <= endStr && t.plannedEnd && t.plannedEnd > endStr) {
-        const tStart = new Date(t.plannedStart)
-        const tEnd = new Date(t.plannedEnd)
-        const refDate = isCurrent ? todayDate : endOfMonth
-        const totalDays = (tEnd.getTime() - tStart.getTime()) / 86400000
-        const elapsedDays = Math.max(0, (refDate.getTime() - tStart.getTime()) / 86400000)
-        plannedDone += w * Math.min(1, totalDays > 0 ? elapsedDays / totalDays : 0)
-      }
-    })
-    const plannedCumulative = totalW ? Math.round(plannedDone / totalW * 100) : 0
+    rows.push({ period: weekLabel(pointDate), date: pointISO, plannedCumulative, executedCumulative, isToday, isFuture })
+    cur.setDate(cur.getDate() + 7)
+  }
 
-    // Executado: passado + mês corrente com progresso real
-    const hasExecData = !isFuture
-    let execDone = 0
-    if (hasExecData) {
-      const refStr = (isCurrent ? todayDate : endOfMonth).toISOString().slice(0, 10)
-      leaves.forEach(t => {
-        const w = t.weight || 1
-        const endRef = t.actualEnd || (t.status === 'COMPLETED' ? t.plannedEnd : null)
-        if (endRef && endRef <= refStr) execDone += w
-        else if (t.status === 'IN_PROGRESS' && t.plannedStart && t.plannedStart <= refStr)
-          execDone += w * (t.progress / 100)
-      })
+  // Garante ponto exato de hoje se não caiu numa semana
+  if (!rows.some(r => r.isToday)) {
+    const todayPoint = {
+      period: todayLabel, date: todayISO, isToday: true, isFuture: false,
+      plannedCumulative: calcPlannedDash(leaves, totalW, todayDate, todayISO),
+      executedCumulative: calcExecutedDash(leaves, totalW, todayISO),
     }
-    const executedCumulative = hasExecData ? (totalW ? Math.round(execDone / totalW * 100) : 0) : null
-
-    rows.push({ period: label, plannedCumulative, executedCumulative, isCurrent, isFuture })
-    cur.setMonth(cur.getMonth() + 1)
+    const idx = rows.findIndex(r => r.date > todayISO)
+    if (idx >= 0) rows.splice(idx, 0, todayPoint)
+    else rows.push(todayPoint)
   }
 
   return { rows, todayLabel }
@@ -260,7 +279,7 @@ export default function DashboardPage() {
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                      <XAxis dataKey="period" tick={{ fill: 'var(--text3)', fontSize: 11 }} axisLine={{ stroke: 'var(--border)' }} tickLine={false} />
+                      <XAxis dataKey="period" tick={{ fill: 'var(--text3)', fontSize: 10 }} axisLine={{ stroke: 'var(--border)' }} tickLine={false} interval={1} />
                       <YAxis tick={{ fill: 'var(--text3)', fontSize: 11 }} tickFormatter={v => v + '%'} axisLine={{ stroke: 'var(--border)' }} tickLine={false} domain={[0, 100]} />
                       <Tooltip
                         contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }}
@@ -269,9 +288,9 @@ export default function DashboardPage() {
                       <ReferenceLine
                         x={todayLabel}
                         stroke="var(--red)"
-                        strokeWidth={1.5}
-                        strokeDasharray="4,3"
-                        label={{ value: lang === 'pt' ? 'Hoje' : 'Today', fill: 'var(--red)', fontSize: 9, position: 'top' }}
+                        strokeWidth={2}
+                        strokeDasharray="5,4"
+                        label={{ value: lang === 'pt' ? `Hoje ${todayISO.slice(8,10)}/${todayISO.slice(5,7)}` : `Today ${todayISO.slice(5,7)}/${todayISO.slice(8,10)}`, fill: 'var(--red)', fontSize: 9, position: 'insideTopRight' }}
                       />
                       <Area type="monotone" dataKey="plannedCumulative" name={lang === 'pt' ? 'Planejado' : 'Planned'} stroke="#3b82f6" strokeWidth={2} fill="url(#gDP)" connectNulls />
                       <Area type="monotone" dataKey="executedCumulative" name={lang === 'pt' ? 'Executado' : 'Executed'} stroke="#22c55e" strokeWidth={2} fill="url(#gDE)" connectNulls={false} />
