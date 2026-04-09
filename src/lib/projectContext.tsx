@@ -125,13 +125,10 @@ const ProjectContext = createContext<ProjectContextType>({
 export function ProjectProvider({ children }: { children: ReactNode }) {
   // Inicia com PROJECTS[0] para SSR e corrige no cliente via useEffect
   const [activeProject, setActiveProjectState] = useState<Project>(PROJECTS[0])
-  const [hydrated, setHydrated] = useState(false)
-
   // Após hidratação, carrega o projeto salvo no localStorage
   useEffect(() => {
     const saved = getInitialProject()
     setActiveProjectState(saved)
-    setHydrated(true)
   }, [])
 
   // Ao trocar projeto, persiste no localStorage
@@ -141,9 +138,6 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(STORAGE_KEY, p.id)
     } catch {}
   }
-
-  // Evita flash de conteúdo errado durante hidratação SSR
-  if (!hydrated) return null
 
   return (
     <ProjectContext.Provider value={{ activeProject, setActiveProject }}>
