@@ -11,24 +11,19 @@ interface Task {
   progress: number; status: string; weight: number
 }
 
-// Data de hoje em ISO (YYYY-MM-DD) — usada como referência única em todo o componente
 const todayISO = new Date().toISOString().slice(0, 10)
+const todayDate = new Date(todayISO)
 
-// ─── Gera o label do mês no mesmo formato usado por buildCurveData ────────────
 function monthLabel(date: Date, lang: string): string {
   return date.toLocaleDateString(lang === 'pt' ? 'pt-BR' : 'en-US', { month: 'short', year: '2-digit' })
 }
 
-// ─── Calcula tendência real baseada nos prazos individuais de cada tarefa ─────
-// Lógica: para cada tarefa em andamento, verifica se o progresso é compatível
-// com o tempo decorrido. Se >30% das tarefas ativas estão em risco → Atrasado.
 function calcTrend(tasks: Task[], lang: string): { label: string; color: string; detail: string } {
   const leaves = tasks.filter(t => !t.isGroup && t.status !== 'COMPLETED' && t.status !== 'NOT_STARTED')
   if (!leaves.length) return { label: lang === 'pt' ? 'No Prazo' : 'On Track', color: '#60a5fa', detail: '' }
 
   let atRisk = 0
   let ahead = 0
-  const today = new Date(todayISO)
 
   leaves.forEach(t => {
     if (!t.plannedStart || !t.plannedEnd) return
@@ -36,13 +31,11 @@ function calcTrend(tasks: Task[], lang: string): { label: string; color: string;
     const end = new Date(t.plannedEnd)
     const totalDays = (end.getTime() - start.getTime()) / 86400000
     if (totalDays <= 0) return
-    const elapsed = Math.max(0, (today.getTime() - start.getTime()) / 86400000)
-    const timeProgress = Math.min(100, (elapsed / totalDays) * 100) // % do prazo já decorrido
-    const taskProgress = t.progress // % de execução
+    const elapsed = Math.max(0, (todayDate.getTime() - start.getTime()) / 86400000)
+    const timeProgress = Math.min(100, (elapsed / totalDays) * 100)
+    const taskProgress = t.progress
 
-    // Se o prazo já passou mais de 10% e a execução está >15pp abaixo do tempo decorrido → risco
     if (timeProgress > 10 && taskProgress < timeProgress - 15) atRisk++
-    // Se a execução está >15pp acima do tempo decorrido → adiantado
     else if (timeProgress > 10 && taskProgress > timeProgress + 15) ahead++
   })
 
@@ -50,25 +43,17 @@ function calcTrend(tasks: Task[], lang: string): { label: string; color: string;
   const riskPct = atRisk / total
   const aheadPct = ahead / total
 
-  if (riskPct >= 0.3) {
-    return {
-      label: lang === 'pt' ? 'Atrasado' : 'Delayed',
-      color: '#f87171',
-      detail: lang === 'pt' ? `${atRisk} de ${total} tarefas em risco` : `${atRisk} of ${total} tasks at risk`
-    }
+  if (riskPct >= 0.3) return {
+    label: lang === 'pt' ? 'Atrasado' : 'Delayed',
+    color: '#f87171',
+    detail: lang === 'pt' ? `${atRisk} de ${total} tarefas em risco` : `${atRisk} of ${total} tasks at risk`
   }
-  if (aheadPct >= 0.5 && riskPct === 0) {
-    return {
-      label: lang === 'pt' ? 'Adiantado' : 'Ahead',
-      color: '#4ade80',
-      detail: lang === 'pt' ? `${ahead} de ${total} tarefas adiantadas` : `${ahead} of ${total} tasks ahead`
-    }
+  if (aheadPct >= 0.5 && riskPct === 0) return {
+    label: lang === 'pt' ? 'Adiantado' : 'Ahead',
+    color: '#4ade80',
+    detail: lang === 'pt' ? `${ahead} de ${total} tarefas adiantadas` : `${ahead} of ${total} tasks ahead`
   }
-  return {
-    label: lang === 'pt' ? 'No Prazo' : 'On Track',
-    color: '#60a5fa',
-    detail: ''
-  }
+  return { label: lang === 'pt' ? 'No Prazo' : 'On Track', color: '#60a5fa', detail: '' }
 }
 
 function buildCurveData(tasks: Task[], lang: string) {
@@ -88,53 +73,80 @@ function buildCurveData(tasks: Task[], lang: string) {
   const rows: any[] = []
   const cur = new Date(start)
 
-  // Gera o label de "Hoje" usando o mesmo formato e locale do loop abaixo
-  // Aponta para o primeiro dia do mês atual para garantir match exato
   const todayMonth = new Date(todayISO.slice(0, 7) + '-01')
   const todayLabel = monthLabel(todayMonth, lang)
 
   while (cur <= end) {
     const endOfMonth = new Date(cur.getFullYear(), cur.getMonth() + 1, 0)
+    const startOfMonth = new Date(cur.getFullYear(), cur.getMonth(), 1)
     const endStr = endOfMonth.toISOString().slice(0, 10)
-    const label = monthLabel(new Date(cur), lang) // mesmo formato do todayLabel
+    const label = monthLabel(new Date(cur), lang)
 
+    // Classifica o mês em relação a hoje
+    const isFuture = startOfMonth > todayDate   // mês ainda não começou
+    const isCurrent = !isFuture && endOfMonth >= todayDate // mês em curso
+
+    // ── Planejado acumulado ──────────────────────────────────────────────────
+    // Tarefas já encerradas no período: peso total
+    // Tarefas em andamento no período: peso proporcional ao tempo decorrido
+    // Meses futuros: apenas tarefas com término <= fim do mês (sem proporcional)
     let plannedDone = 0
-    leaves.forEach(t => { if (t.plannedEnd && t.plannedEnd <= endStr) plannedDone += (t.weight || 1) })
+    leaves.forEach(t => {
+      const w = t.weight || 1
+      if (t.plannedEnd && t.plannedEnd <= endStr) {
+        plannedDone += w
+      } else if (!isFuture && t.plannedStart && t.plannedStart <= endStr && t.plannedEnd && t.plannedEnd > endStr) {
+        const tStart = new Date(t.plannedStart)
+        const tEnd = new Date(t.plannedEnd)
+        const refDate = isCurrent ? todayDate : endOfMonth
+        const totalDays = (tEnd.getTime() - tStart.getTime()) / 86400000
+        const elapsedDays = Math.max(0, (refDate.getTime() - tStart.getTime()) / 86400000)
+        const proportion = totalDays > 0 ? Math.min(1, elapsedDays / totalDays) : 0
+        plannedDone += w * proportion
+      }
+    })
     const plannedCumulative = totalW ? Math.round(plannedDone / totalW * 100) : 0
 
-    // "Passado" = o fim do mês já ocorreu (endStr <= hoje)
-    const isPast = endStr <= todayISO
+    // ── Executado acumulado ──────────────────────────────────────────────────
+    // Passado e mês corrente têm dados reais; futuro = null
+    const hasExecData = !isFuture
     let execDone = 0
-    if (isPast) {
+    if (hasExecData) {
+      const refDate = isCurrent ? todayDate : endOfMonth
+      const refStr = refDate.toISOString().slice(0, 10)
       leaves.forEach(t => {
         const w = t.weight || 1
         const endRef = t.actualEnd || (t.status === 'COMPLETED' ? t.plannedEnd : null)
-        if (endRef && endRef <= endStr) execDone += w
-        else if (t.status === 'IN_PROGRESS' && t.plannedStart && t.plannedStart <= endStr)
+        if (endRef && endRef <= refStr) {
+          execDone += w
+        } else if (t.status === 'IN_PROGRESS' && t.plannedStart && t.plannedStart <= refStr) {
           execDone += w * (t.progress / 100)
+        }
       })
     }
-    const executedCumulative = isPast ? (totalW ? Math.round(execDone / totalW * 100) : 0) : null
+    const executedCumulative = hasExecData ? (totalW ? Math.round(execDone / totalW * 100) : 0) : null
 
-    // Avanço do período (mensal)
+    // ── Avanço do período (para gráfico de barras) ───────────────────────────
     const prevEnd = new Date(cur); prevEnd.setDate(0)
     const prevEndStr = prevEnd.toISOString().slice(0, 10)
     let plannedPrev = 0
-    leaves.forEach(t => { if (t.plannedEnd && t.plannedEnd <= prevEndStr) plannedPrev += (t.weight || 1) })
+    leaves.forEach(t => {
+      if (t.plannedEnd && t.plannedEnd <= prevEndStr) plannedPrev += (t.weight || 1)
+    })
     const plannedPeriod = Math.round((plannedDone - plannedPrev) / totalW * 100)
 
     let execPrev = 0
-    if (isPast) {
+    if (hasExecData) {
       leaves.forEach(t => {
         const w = t.weight || 1
         const endRef = t.actualEnd || (t.status === 'COMPLETED' ? t.plannedEnd : null)
         if (endRef && endRef <= prevEndStr) execPrev += w
       })
     }
-    const executedPeriod = isPast ? Math.round((execDone - execPrev) / totalW * 100) : null
-    const deviation = isPast && executedCumulative !== null ? executedCumulative - plannedCumulative : null
+    const executedPeriod = hasExecData ? Math.round((execDone - execPrev) / totalW * 100) : null
+    const deviation = hasExecData && executedCumulative !== null ? executedCumulative - plannedCumulative : null
 
-    rows.push({ period: label, plannedCumulative, executedCumulative, plannedPeriod, executedPeriod, deviation })
+    rows.push({ period: label, plannedCumulative, executedCumulative, plannedPeriod, executedPeriod, deviation, isCurrent, isFuture })
     cur.setMonth(cur.getMonth() + 1)
   }
 
@@ -168,24 +180,25 @@ export default function CurveSPage() {
 
   const { rows: data, todayLabel } = buildCurveData(tasks, lang)
 
-  // KPIs de avanço acumulado — baseados no último mês com dado executado
-  const lastExec = [...data].reverse().find(d => d.executedCumulative !== null)
-  const lastPlan = [...data].reverse().find(d => d.plannedCumulative !== null)
-  const execVal = lastExec?.executedCumulative ?? 0
-  const planVal = lastExec?.plannedCumulative ?? lastPlan?.plannedCumulative ?? 0
+  // KPIs usam o mês corrente como referência (não o último mês executado)
+  const currentRow = data.find(d => d.isCurrent)
+  const lastExecRow = currentRow ?? [...data].reverse().find(d => d.executedCumulative !== null)
+  const execVal = lastExecRow?.executedCumulative ?? 0
+  const planVal = lastExecRow?.plannedCumulative ?? 0
   const deviation = execVal - planVal
 
-  // Tendência: calculada por prazo individual de tarefa (não só desvio acumulado)
   const trend = calcTrend(tasks, lang)
 
   const getStatus = (d: any) => {
-    if (d.executedCumulative === null) return c.statusFuturo
+    if (d.isFuture) return c.statusFuturo
+    if (d.isCurrent) return lang === 'pt' ? 'Atual' : 'Current'
     if (d.deviation !== null && d.deviation <= -2) return c.statusAtrasado
     if (d.deviation !== null && d.deviation >= 2) return c.statusAdiantado
     return c.statusNoPrazo
   }
   const getStatusColor = (d: any) => {
-    if (d.executedCumulative === null) return 'badge-gray'
+    if (d.isFuture) return 'badge-gray'
+    if (d.isCurrent) return 'badge-blue'
     if (d.deviation !== null && d.deviation <= -2) return 'badge-red'
     if (d.deviation !== null && d.deviation >= 2) return 'badge-green'
     return 'badge-blue'
@@ -222,15 +235,15 @@ export default function CurveSPage() {
             {[
               { label: c.kpi1, value: planVal + '%', color: '#60a5fa' },
               { label: c.kpi2, value: execVal + '%', color: deviation < 0 ? '#f87171' : '#4ade80' },
-              { label: c.kpi3, value: (deviation >= 0 ? '+' : '') + deviation + '%', color: deviation < 0 ? '#f87171' : '#4ade80' },
+              { label: c.kpi3, value: (deviation >= 0 ? '+' : '') + deviation + '%', color: deviation < 0 ? '#f87171' : deviation > 0 ? '#4ade80' : 'var(--text2)' },
               { label: c.kpi4, value: trend.label, color: trend.color },
             ].map(k => (
               <div key={k.label} className="card" style={{ padding: 20 }}>
                 <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>{k.label}</p>
                 <p style={{ fontFamily: 'Syne,sans-serif', fontSize: 26, fontWeight: 800, color: k.color }}>{k.value}</p>
-                {k.label === c.kpi4 && trend.detail ? (
-                  <p style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>{trend.detail}</p>
-                ) : null}
+                {k.label === c.kpi4 && trend.detail
+                  ? <p style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>{trend.detail}</p>
+                  : null}
               </div>
             ))}
           </div>
@@ -255,7 +268,6 @@ export default function CurveSPage() {
                   <YAxis tick={{ fill: 'var(--text3)', fontSize: 11 }} axisLine={{ stroke: 'var(--border)' }} tickLine={false} domain={[0, 100]} tickFormatter={v => v + '%'} />
                   <Tooltip {...tt} />
                   <Legend wrapperStyle={{ fontSize: 12, paddingTop: 12 }} formatter={(v: string) => <span style={{ color: 'var(--text2)' }}>{v}</span>} />
-                  {/* ReferenceLine usa o mesmo todayLabel gerado pelo buildCurveData — match garantido */}
                   <ReferenceLine
                     x={todayLabel}
                     stroke="var(--red)"
@@ -287,6 +299,7 @@ export default function CurveSPage() {
                 </ResponsiveContainer>
               </div>
             </div>
+
             <div className="card">
               <div className="card-header"><h2 className="card-title">{c.tableTitle}</h2></div>
               <div className="table-wrap" style={{ maxHeight: 240, overflowY: 'auto' }}>
@@ -295,9 +308,16 @@ export default function CurveSPage() {
                     <tr>{[c.colPeriod, c.colPlanAcum, c.colExecAcum, c.colDesvio, c.colStatus].map(h => <th key={h}>{h}</th>)}</tr>
                   </thead>
                   <tbody>{data.map(d => (
-                    <tr key={d.period}>
-                      <td style={{ fontWeight: 600 }}>{d.period}</td>
-                      <td>{d.plannedCumulative}%</td>
+                    <tr key={d.period} style={d.isCurrent ? { background: 'rgba(59,130,246,0.07)', fontWeight: 600 } : {}}>
+                      <td style={{ fontWeight: 600 }}>
+                        {d.period}
+                        {d.isCurrent && (
+                          <span style={{ marginLeft: 6, fontSize: 9, color: 'var(--red)', fontWeight: 700 }}>
+                            ● {lang === 'pt' ? 'Hoje' : 'Today'}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ color: '#60a5fa' }}>{d.plannedCumulative}%</td>
                       <td style={{ color: d.executedCumulative != null ? '#4ade80' : 'var(--text3)' }}>
                         {d.executedCumulative != null ? d.executedCumulative + '%' : '—'}
                       </td>
