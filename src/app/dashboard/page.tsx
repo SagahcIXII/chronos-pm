@@ -20,39 +20,31 @@ function monthLabel(date: Date, lang: string): string {
 }
 
 // Planejado: passado/hoje = proporcional; futuro = degraus (nunca decresce)
-function calcPlannedDash(leaves: Task[], totalW: number, pointDate: Date, pointISO: string): number {
-  const isFuture = pointDate > todayDate
-  let plannedDone = 0
-  leaves.forEach(t => {
-    const w = t.weight || 1
-    if (t.plannedEnd && t.plannedEnd <= pointISO) {
-      plannedDone += w
-    } else if (!isFuture && t.plannedStart && t.plannedStart <= pointISO && t.plannedEnd && t.plannedEnd > pointISO) {
-      const tStart = new Date(t.plannedStart)
-      const tEnd = new Date(t.plannedEnd)
-      const totalDays = (tEnd.getTime() - tStart.getTime()) / 86400000
-      const elapsedDays = Math.max(0, (pointDate.getTime() - tStart.getTime()) / 86400000)
-      plannedDone += w * Math.min(1, totalDays > 0 ? elapsedDays / totalDays : 0)
-    }
-  })
-  return totalW ? Math.round(plannedDone / totalW * 100) : 0
+// ── Planejado: linha reta (diasDecorridos/diasTotais) ────────────────────────
+function calcPlannedLinear(pointDate: Date, projectStart: string, projectEnd: string): number {
+  const start = new Date(projectStart)
+  const end = new Date(projectEnd)
+  const totalDays = (end.getTime() - start.getTime()) / 86400000
+  if (totalDays <= 0) return 0
+  const elapsed = (pointDate.getTime() - start.getTime()) / 86400000
+  return Math.min(100, Math.max(0, Math.round((elapsed / totalDays) * 100)))
 }
 
-// Executado: soma real de tarefas concluídas + progresso das em andamento
-function calcExecutedDash(leaves: Task[], totalW: number, refISO: string): number {
+// ── Executado: progresso real ponderado das tarefas ───────────────────────────
+function calcExecutedLinear(leaves: Task[], totalW: number, pointISO: string): number {
   let execDone = 0
   leaves.forEach(t => {
     const w = t.weight || 1
     const endRef = t.actualEnd || (t.status === 'COMPLETED' ? t.plannedEnd : null)
-    if (endRef && endRef <= refISO) execDone += w
-    else if (t.status === 'IN_PROGRESS' && t.plannedStart && t.plannedStart <= refISO)
+    if (endRef && endRef <= pointISO) execDone += w
+    else if (t.status === 'IN_PROGRESS' && t.plannedStart && t.plannedStart <= pointISO)
       execDone += w * (t.progress / 100)
   })
   return totalW ? Math.round(execDone / totalW * 100) : 0
 }
 
-// Gráfico semanal: linha "Hoje" no dia exato, sem barriga na curva planejada
-function computeCurveData(tasks: Task[], lang: string) {
+// ── Gráfico semanal com metodologia linear ────────────────────────────────────
+function computeCurveData(tasks: Task[], lang: string, projectStart: string, projectEnd: string) {
   const leaves = tasks.filter(t => !t.isGroup)
   if (!leaves.length) return { rows: [], todayLabel: '' }
 
@@ -62,9 +54,9 @@ function computeCurveData(tasks: Task[], lang: string) {
   const minD = dates.reduce((a, b) => a < b ? a : b)
   const maxD = dates.reduce((a, b) => a > b ? a : b)
 
-  const start = new Date(minD)
-  start.setDate(start.getDate() - ((start.getDay() + 6) % 7)) // recua para segunda
-  const end = new Date(maxD)
+  const start = new Date(projectStart || minD)
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7))
+  const end = new Date(projectEnd || maxD)
   end.setDate(end.getDate() + 7)
 
   const totalW = leaves.reduce((s, t) => s + (t.weight || 1), 0)
@@ -76,34 +68,56 @@ function computeCurveData(tasks: Task[], lang: string) {
     const mm = String(d.getMonth() + 1).padStart(2, '0')
     return lang === 'pt' ? `${dd}/${mm}` : `${mm}/${dd}`
   }
-  const todayLabel = weekLabel(new Date(todayISO))
+
+  const todayLabel = weekLabel(todayDate)
+  let todayInserted = false
 
   while (cur <= end) {
     const pointDate = new Date(cur)
     const pointISO = pointDate.toISOString().slice(0, 10)
+
+    // Insere ponto de hoje antes do primeiro futuro
+    if (!todayInserted && pointISO > todayISO) {
+      rows.push({
+        period: todayLabel,
+        date: todayISO,
+        plannedCumulative: calcPlannedLinear(todayDate, projectStart, projectEnd),
+        executedCumulative: calcExecutedLinear(leaves, totalW, todayISO),
+        isToday: true,
+        isFuture: false,
+      })
+      todayInserted = true
+    }
+
     const isFuture = pointDate > todayDate
     const isToday = pointISO === todayISO
+    if (isToday) todayInserted = true
 
-    const plannedCumulative = calcPlannedDash(leaves, totalW, pointDate, pointISO)
-    const executedCumulative = !isFuture ? calcExecutedDash(leaves, totalW, pointISO) : null
-
-    rows.push({ period: weekLabel(pointDate), date: pointISO, plannedCumulative, executedCumulative, isToday, isFuture })
+    rows.push({
+      period: isToday ? todayLabel : weekLabel(pointDate),
+      date: pointISO,
+      plannedCumulative: calcPlannedLinear(pointDate, projectStart, projectEnd),
+      executedCumulative: !isFuture ? calcExecutedLinear(leaves, totalW, pointISO) : null,
+      isToday,
+      isFuture,
+    })
     cur.setDate(cur.getDate() + 7)
   }
 
-  // Garante ponto exato de hoje se não caiu numa semana
-  if (!rows.some(r => r.isToday)) {
-    const todayPoint = {
-      period: todayLabel, date: todayISO, isToday: true, isFuture: false,
-      plannedCumulative: calcPlannedDash(leaves, totalW, todayDate, todayISO),
-      executedCumulative: calcExecutedDash(leaves, totalW, todayISO),
-    }
-    const idx = rows.findIndex(r => r.date > todayISO)
-    if (idx >= 0) rows.splice(idx, 0, todayPoint)
-    else rows.push(todayPoint)
+  if (!todayInserted) {
+    rows.push({
+      period: todayLabel,
+      date: todayISO,
+      plannedCumulative: calcPlannedLinear(todayDate, projectStart, projectEnd),
+      executedCumulative: calcExecutedLinear(leaves, totalW, todayISO),
+      isToday: true,
+      isFuture: false,
+    })
   }
 
-  // Garante monotonicidade: planejado nunca decresce entre pontos consecutivos
+  rows.sort((a, b) => a.date.localeCompare(b.date))
+
+  // Monotonicidade
   for (let i = 1; i < rows.length; i++) {
     if (rows[i].plannedCumulative < rows[i - 1].plannedCumulative) {
       rows[i].plannedCumulative = rows[i - 1].plannedCumulative
@@ -113,8 +127,6 @@ function computeCurveData(tasks: Task[], lang: string) {
   return { rows, todayLabel }
 }
 
-// Tarefa atrasada = prazo vencido E não concluída
-// Tarefa em risco = prazo > 50% decorrido E progresso < (tempo decorrido - 15pp)
 function classifyTasks(leaves: Task[]) {
   const delayed: Task[] = []
   const atRisk: Task[] = []
@@ -164,21 +176,12 @@ export default function DashboardPage() {
   const totalProgress = activeProject?.progress ?? 0
 
   // Fix 1: plannedProgress proporcional ao tempo (não só tarefas já encerradas)
+  // Planejado linear: mesma metodologia da Curva S
   const plannedProgress = (() => {
-    if (!leaves.length) return 0
-    const totalW = leaves.reduce((s, t) => s + (t.weight || 1), 0)
-    let plannedDone = 0
-    leaves.forEach(t => {
-      const w = t.weight || 1
-      if (t.plannedEnd && t.plannedEnd <= todayISO) {
-        plannedDone += w
-      } else if (t.plannedStart && t.plannedEnd && t.plannedStart <= todayISO) {
-        const totalDays = (new Date(t.plannedEnd).getTime() - new Date(t.plannedStart).getTime()) / 86400000
-        const elapsed = Math.max(0, (todayDate.getTime() - new Date(t.plannedStart).getTime()) / 86400000)
-        plannedDone += w * Math.min(1, totalDays > 0 ? elapsed / totalDays : 0)
-      }
-    })
-    return totalW ? Math.round(plannedDone / totalW * 100) : 0
+    const pS = (activeProject as any).startDate?.slice(0,10) ?? ''
+    const pE = (activeProject as any).endDate?.slice(0,10) ?? ''
+    if (!pS || !pE) return 0
+    return calcPlannedLinear(todayDate, pS, pE)
   })()
 
   const deviation = totalProgress - plannedProgress
@@ -187,7 +190,9 @@ export default function DashboardPage() {
   const { delayed, atRisk } = classifyTasks(leaves)
   const problemCount = delayed.length + atRisk.length
 
-  const { rows: curveData, todayLabel } = computeCurveData(tasks, lang)
+  const pStart = (activeProject as any).startDate?.slice(0,10) ?? ''
+  const pEnd = (activeProject as any).endDate?.slice(0,10) ?? ''
+  const { rows: curveData, todayLabel } = computeCurveData(tasks, lang, pStart, pEnd)
 
   const fd = (s: string) => {
     const [y, m, day] = s.split('-')
@@ -297,7 +302,7 @@ export default function DashboardPage() {
                         stroke="var(--red)"
                         strokeWidth={2}
                         strokeDasharray="5,4"
-                        label={{ value: lang === 'pt' ? `Hoje ${todayISO.slice(8,10)}/${todayISO.slice(5,7)}` : `Today ${todayISO.slice(5,7)}/${todayISO.slice(8,10)}`, fill: 'var(--red)', fontSize: 9, position: 'insideTopRight' }}
+                        label={{ value: lang === 'pt' ? `Hoje ${todayISO.slice(8,10)}/${todayISO.slice(5,7)}` : `Today ${todayISO.slice(5,7)}/${todayISO.slice(8,10)}`, fill: 'var(--red)', fontSize: 9, position: 'top' }}
                       />
                       <Area type="monotone" dataKey="plannedCumulative" name={lang === 'pt' ? 'Planejado' : 'Planned'} stroke="#3b82f6" strokeWidth={2} fill="url(#gDP)" connectNulls />
                       <Area type="monotone" dataKey="executedCumulative" name={lang === 'pt' ? 'Executado' : 'Executed'} stroke="#22c55e" strokeWidth={2} fill="url(#gDE)" connectNulls={false} />
