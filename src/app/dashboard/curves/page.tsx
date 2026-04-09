@@ -52,46 +52,19 @@ function calcTrend(tasks: Task[], lang: string): { label: string; color: string;
   return { label: lang === 'pt' ? 'No Prazo' : 'On Track', color: '#60a5fa', detail: '' }
 }
 
-// ── Planejado: proporção do tempo decorrido de CADA tarefa no ponto dado ─────
-// Lógica: cada tarefa contribui com peso × (diasDecorridos / diasTotais)
-// Isso reflete o quanto deveria ter sido feito considerando o prazo individual.
-// Para pontos futuros: usa degraus (plannedEnd <= pointISO = peso total, senão 0).
-// Para passado/hoje: proporcional ao tempo — NUNCA conta 100% de tarefas
-// cujo prazo passou, evitando inflação artificial do planejado.
-function calcPlanned(leaves: Task[], totalW: number, pointDate: Date, pointISO: string): number {
-  const isFuture = pointDate > todayDate
-  let plannedDone = 0
-
-  if (isFuture) {
-    // Futuro: degraus — tarefa conta 100% só quando plannedEnd passou
-    leaves.forEach(t => {
-      const w = t.weight || 1
-      if (t.plannedEnd && t.plannedEnd <= pointISO) plannedDone += w
-      // tarefas ainda não encerradas = 0
-    })
-  } else {
-    // Passado / hoje: proporção do tempo decorrido de cada tarefa
-    leaves.forEach(t => {
-      const w = t.weight || 1
-      if (!t.plannedStart || !t.plannedEnd) return
-
-      const tStart = new Date(t.plannedStart)
-      const tEnd = new Date(t.plannedEnd)
-      const totalDays = (tEnd.getTime() - tStart.getTime()) / 86400000
-      if (totalDays <= 0) { plannedDone += w; return }
-
-      // Dias decorridos desde o início da tarefa até o ponto de referência
-      const elapsedDays = Math.max(0, (pointDate.getTime() - tStart.getTime()) / 86400000)
-
-      // Proporção: min(1, elapsed/total) — nunca passa de 100%
-      const proportion = Math.min(1, elapsedDays / totalDays)
-      plannedDone += w * proportion
-    })
-  }
-
-  return totalW ? Math.round(plannedDone / totalW * 100) : 0
+// ── Planejado: linha reta proporcional ao prazo total do projeto ─────────────
+// Metodologia: planejado = (diasDecorridos / diasTotais) × 100
+// Isso representa o avanço esperado se o projeto seguir ritmo constante.
+// Simples, honesto e amplamente usado em gestão de obras.
+// Para pontos futuros: extrapolação linear até 100%.
+function calcPlanned(leaves: Task[], _totalW: number, pointDate: Date, projectStart: string, projectEnd: string): number {
+  const start = new Date(projectStart)
+  const end = new Date(projectEnd)
+  const totalDays = (end.getTime() - start.getTime()) / 86400000
+  if (totalDays <= 0) return 0
+  const elapsed = (pointDate.getTime() - start.getTime()) / 86400000
+  return Math.min(100, Math.max(0, Math.round((elapsed / totalDays) * 100)))
 }
-
 // ── Executado: progresso real ponderado das tarefas ──────────────────────────
 function calcExecuted(leaves: Task[], totalW: number, pointISO: string): number {
   let execDone = 0
@@ -104,9 +77,8 @@ function calcExecuted(leaves: Task[], totalW: number, pointISO: string): number 
   })
   return totalW ? Math.round(execDone / totalW * 100) : 0
 }
-
 // ── Gráfico principal: granularidade SEMANAL ─────────────────────────────────
-function buildWeeklyData(tasks: Task[], lang: string) {
+function buildWeeklyData(tasks: Task[], lang: string, projectStart: string, projectEnd: string) {
   const leaves = tasks.filter(t => !t.isGroup)
   if (!leaves.length) return { rows: [], todayLabel: '' }
 
@@ -138,7 +110,7 @@ function buildWeeklyData(tasks: Task[], lang: string) {
       rows.push({
         period: todayLabel,
         date: todayISO,
-        plannedCumulative: calcPlanned(leaves, totalW, todayDate, todayISO),
+        plannedCumulative: calcPlanned(leaves, totalW, todayDate, projectStart, projectEnd),
         executedCumulative: calcExecuted(leaves, totalW, todayISO),
         isToday: true,
         isFuture: false,
@@ -153,7 +125,7 @@ function buildWeeklyData(tasks: Task[], lang: string) {
     rows.push({
       period: isToday ? todayLabel : weekLabel(pointDate, lang),
       date: pointISO,
-      plannedCumulative: calcPlanned(leaves, totalW, pointDate, pointISO),
+      plannedCumulative: calcPlanned(leaves, totalW, pointDate, projectStart, projectEnd),
       executedCumulative: !isFuture ? calcExecuted(leaves, totalW, pointISO) : null,
       isToday,
       isFuture,
@@ -166,7 +138,7 @@ function buildWeeklyData(tasks: Task[], lang: string) {
     rows.push({
       period: todayLabel,
       date: todayISO,
-      plannedCumulative: calcPlanned(leaves, totalW, todayDate, todayISO),
+      plannedCumulative: calcPlanned(leaves, totalW, todayDate, projectStart, projectEnd),
       executedCumulative: calcExecuted(leaves, totalW, todayISO),
       isToday: true,
       isFuture: false,
@@ -186,7 +158,7 @@ function buildWeeklyData(tasks: Task[], lang: string) {
   return { rows, todayLabel }
 }
 // ── Tabela e barras: granularidade MENSAL ────────────────────────────────────
-function buildMonthlyData(tasks: Task[], lang: string) {
+function buildMonthlyData(tasks: Task[], lang: string, projectStart: string, projectEnd: string) {
   const leaves = tasks.filter(t => !t.isGroup)
   if (!leaves.length) return []
 
@@ -212,12 +184,12 @@ function buildMonthlyData(tasks: Task[], lang: string) {
     const refDate = isCurrent ? todayDate : endOfMonth
     const refISO = refDate.toISOString().slice(0, 10)
 
-    const plannedCumulative = calcPlanned(leaves, totalW, refDate, refISO)
+    const plannedCumulative = calcPlanned(leaves, totalW, refDate, projectStart, projectEnd)
     const executedCumulative = !isFuture ? calcExecuted(leaves, totalW, refISO) : null
 
     const prevEnd = new Date(cur); prevEnd.setDate(0)
     const prevISO = prevEnd.toISOString().slice(0, 10)
-    const plannedPrev = calcPlanned(leaves, totalW, prevEnd, prevISO)
+    const plannedPrev = calcPlanned(leaves, totalW, prevEnd, projectStart, projectEnd)
     const plannedPeriod = Math.max(0, plannedCumulative - plannedPrev)
 
     let execPrev = 0
@@ -279,8 +251,10 @@ export default function CurveSPage() {
 
   useEffect(() => { load() }, [load])
 
-  const { rows: weeklyData, todayLabel } = buildWeeklyData(tasks, lang)
-  const monthlyData = buildMonthlyData(tasks, lang)
+  const pStart = (activeProject as any).startDate?.slice(0,10) ?? ''
+  const pEnd = (activeProject as any).endDate?.slice(0,10) ?? ''
+  const { rows: weeklyData, todayLabel } = buildWeeklyData(tasks, lang, pStart, pEnd)
+  const monthlyData = buildMonthlyData(tasks, lang, pStart, pEnd)
 
   const todayPoint = weeklyData.find(r => r.isToday)
   const execVal = todayPoint?.executedCumulative ?? 0
