@@ -126,29 +126,29 @@ function buildWeeklyData(tasks: Task[], lang: string) {
   const cur = new Date(start)
   const todayLabel = weekLabel(new Date(todayISO), lang)
 
-  // Gera pontos semanais + ponto exato de hoje no meio do ciclo
-  const pointsToRender: Date[] = []
-  const tempCur = new Date(start)
-  while (tempCur <= end) {
-    pointsToRender.push(new Date(tempCur))
-    // Se hoje cai entre este ponto e o próximo, insere hoje
-    const next = new Date(tempCur)
-    next.setDate(next.getDate() + 7)
-    if (tempCur.toISOString().slice(0,10) < todayISO && next.toISOString().slice(0,10) > todayISO) {
-      pointsToRender.push(new Date(todayISO))
-    }
-    tempCur.setDate(tempCur.getDate() + 7)
-  }
-
-  for (const pointDate of pointsToRender) {
+  // Gera pontos semanais — o ponto "Hoje" é o mais próximo de hoje no ciclo
+  // (não inserimos ponto extra para não quebrar o eixo X do Recharts)
+  while (cur <= end) {
+    const pointDate = new Date(cur)
     const pointISO = pointDate.toISOString().slice(0, 10)
     const isFuture = pointDate > todayDate
-    const isToday = pointISO === todayISO
 
     const plannedCumulative = calcPlanned(leaves, totalW, pointDate, pointISO)
     const executedCumulative = !isFuture ? calcExecuted(leaves, totalW, pointISO) : null
 
-    rows.push({ period: weekLabel(pointDate, lang), date: pointISO, plannedCumulative, executedCumulative, isToday, isFuture })
+    rows.push({ period: weekLabel(pointDate, lang), date: pointISO, plannedCumulative, executedCumulative, isToday: false, isFuture })
+    cur.setDate(cur.getDate() + 7)
+  }
+
+  // Marca o ponto semanal mais próximo de hoje (sem ultrapassar) como isToday
+  // e calcula seus valores no dia exato de hoje
+  const todayPointIdx = [...rows].reverse().findIndex(r => r.date <= todayISO)
+  if (todayPointIdx >= 0) {
+    const realIdx = rows.length - 1 - todayPointIdx
+    rows[realIdx].isToday = true
+    // Recalcula no dia exato de hoje para o KPI ser preciso
+    rows[realIdx].plannedCumulative = calcPlanned(leaves, totalW, todayDate, todayISO)
+    rows[realIdx].executedCumulative = calcExecuted(leaves, totalW, todayISO)
   }
 
   // Monotonicidade: planejado nunca decresce
