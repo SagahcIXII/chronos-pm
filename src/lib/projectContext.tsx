@@ -1,5 +1,5 @@
 'use client'
-import { createContext, useContext, useState, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 
 export interface Project {
   id: string
@@ -97,6 +97,21 @@ export const PROJECTS: Project[] = [
   },
 ]
 
+const STORAGE_KEY = 'chronos_active_project_id'
+
+// Recupera o projeto salvo no localStorage, ou usa o primeiro como fallback
+function getInitialProject(): Project {
+  if (typeof window === 'undefined') return PROJECTS[0]
+  try {
+    const savedId = localStorage.getItem(STORAGE_KEY)
+    if (savedId) {
+      const found = PROJECTS.find(p => p.id === savedId)
+      if (found) return found
+    }
+  } catch {}
+  return PROJECTS[0]
+}
+
 interface ProjectContextType {
   activeProject: Project
   setActiveProject: (p: Project) => void
@@ -108,7 +123,28 @@ const ProjectContext = createContext<ProjectContextType>({
 })
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
-  const [activeProject, setActiveProject] = useState<Project>(PROJECTS[0])
+  // Inicia com PROJECTS[0] para SSR e corrige no cliente via useEffect
+  const [activeProject, setActiveProjectState] = useState<Project>(PROJECTS[0])
+  const [hydrated, setHydrated] = useState(false)
+
+  // Após hidratação, carrega o projeto salvo no localStorage
+  useEffect(() => {
+    const saved = getInitialProject()
+    setActiveProjectState(saved)
+    setHydrated(true)
+  }, [])
+
+  // Ao trocar projeto, persiste no localStorage
+  const setActiveProject = (p: Project) => {
+    setActiveProjectState(p)
+    try {
+      localStorage.setItem(STORAGE_KEY, p.id)
+    } catch {}
+  }
+
+  // Evita flash de conteúdo errado durante hidratação SSR
+  if (!hydrated) return null
+
   return (
     <ProjectContext.Provider value={{ activeProject, setActiveProject }}>
       {children}
