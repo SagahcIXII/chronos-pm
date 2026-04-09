@@ -103,6 +103,13 @@ function computeCurveData(tasks: Task[], lang: string) {
     else rows.push(todayPoint)
   }
 
+  // Garante monotonicidade: planejado nunca decresce entre pontos consecutivos
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i].plannedCumulative < rows[i - 1].plannedCumulative) {
+      rows[i].plannedCumulative = rows[i - 1].plannedCumulative
+    }
+  }
+
   return { rows, todayLabel }
 }
 
