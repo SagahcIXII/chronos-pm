@@ -1,6 +1,9 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, BarChart, Bar } from 'recharts'
+import {
+  ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, ReferenceLine, BarChart, Bar
+} from 'recharts'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
 
@@ -14,6 +17,14 @@ interface Task {
 const todayISO = new Date().toISOString().slice(0, 10)
 const todayDate = new Date(todayISO)
 
+// Label semanal: "09/04" para pt, "04/09" para en
+function weekLabel(date: Date, lang: string): string {
+  const d = String(date.getDate()).padStart(2, '0')
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  return lang === 'pt' ? `${d}/${m}` : `${m}/${d}`
+}
+
+// Label mensal para a tabela e gráfico de barras
 function monthLabel(date: Date, lang: string): string {
   return date.toLocaleDateString(lang === 'pt' ? 'pt-BR' : 'en-US', { month: 'short', year: '2-digit' })
 }
@@ -22,46 +33,154 @@ function calcTrend(tasks: Task[], lang: string): { label: string; color: string;
   const leaves = tasks.filter(t => !t.isGroup && t.status !== 'COMPLETED' && t.status !== 'NOT_STARTED')
   if (!leaves.length) return { label: lang === 'pt' ? 'No Prazo' : 'On Track', color: '#60a5fa', detail: '' }
 
-  let atRisk = 0
-  let ahead = 0
-
+  let atRisk = 0, ahead = 0
   leaves.forEach(t => {
     if (!t.plannedStart || !t.plannedEnd) return
-    const start = new Date(t.plannedStart)
-    const end = new Date(t.plannedEnd)
-    const totalDays = (end.getTime() - start.getTime()) / 86400000
+    const totalDays = (new Date(t.plannedEnd).getTime() - new Date(t.plannedStart).getTime()) / 86400000
     if (totalDays <= 0) return
-    const elapsed = Math.max(0, (todayDate.getTime() - start.getTime()) / 86400000)
+    const elapsed = Math.max(0, (todayDate.getTime() - new Date(t.plannedStart).getTime()) / 86400000)
     const timeProgress = Math.min(100, (elapsed / totalDays) * 100)
-    const taskProgress = t.progress
-
-    if (timeProgress > 10 && taskProgress < timeProgress - 15) atRisk++
-    else if (timeProgress > 10 && taskProgress > timeProgress + 15) ahead++
+    if (timeProgress > 10 && t.progress < timeProgress - 15) atRisk++
+    else if (timeProgress > 10 && t.progress > timeProgress + 15) ahead++
   })
-
   const total = leaves.length
-  const riskPct = atRisk / total
-  const aheadPct = ahead / total
-
-  if (riskPct >= 0.3) return {
-    label: lang === 'pt' ? 'Atrasado' : 'Delayed',
-    color: '#f87171',
+  if (atRisk / total >= 0.3) return {
+    label: lang === 'pt' ? 'Atrasado' : 'Delayed', color: '#f87171',
     detail: lang === 'pt' ? `${atRisk} de ${total} tarefas em risco` : `${atRisk} of ${total} tasks at risk`
   }
-  if (aheadPct >= 0.5 && riskPct === 0) return {
-    label: lang === 'pt' ? 'Adiantado' : 'Ahead',
-    color: '#4ade80',
+  if (ahead / total >= 0.5 && atRisk === 0) return {
+    label: lang === 'pt' ? 'Adiantado' : 'Ahead', color: '#4ade80',
     detail: lang === 'pt' ? `${ahead} de ${total} tarefas adiantadas` : `${ahead} of ${total} tasks ahead`
   }
   return { label: lang === 'pt' ? 'No Prazo' : 'On Track', color: '#60a5fa', detail: '' }
 }
 
-function buildCurveData(tasks: Task[], lang: string) {
+// ── Gráfico principal: granularidade SEMANAL ─────────────────────────────────
+// Pontos a cada 7 dias → linha "Hoje" cai exatamente no dia correto
+function buildWeeklyData(tasks: Task[], lang: string) {
   const leaves = tasks.filter(t => !t.isGroup)
   if (!leaves.length) return { rows: [], todayLabel: '' }
 
   const dates = leaves.flatMap(t => [t.plannedStart, t.plannedEnd].filter(Boolean) as string[])
   if (!dates.length) return { rows: [], todayLabel: '' }
+
+  const minD = dates.reduce((a, b) => a < b ? a : b)
+  const maxD = dates.reduce((a, b) => a > b ? a : b)
+
+  // Início: segunda-feira da semana do minD
+  const start = new Date(minD)
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7)) // recua para segunda
+
+  // Fim: adiciona 1 semana após maxD
+  const end = new Date(maxD)
+  end.setDate(end.getDate() + 7)
+
+  const totalW = leaves.reduce((s, t) => s + (t.weight || 1), 0)
+  const rows: any[] = []
+  const cur = new Date(start)
+
+  // Label de "Hoje" — próxima segunda ou o próprio dia se for segunda
+  const todayForLabel = new Date(todayISO)
+  const todayLabel = weekLabel(todayForLabel, lang)
+
+  // Reduz pontos: em vez de cada dia, a cada 7 dias (semanal)
+  while (cur <= end) {
+    const pointDate = new Date(cur)
+    const pointISO = pointDate.toISOString().slice(0, 10)
+    const label = weekLabel(pointDate, lang)
+
+    const isFuture = pointDate > todayDate
+    const isToday = pointISO === todayISO
+
+    // Planejado: proporcional ao tempo decorrido para tarefas em andamento
+    let plannedDone = 0
+    leaves.forEach(t => {
+      const w = t.weight || 1
+      if (t.plannedEnd && t.plannedEnd <= pointISO) {
+        plannedDone += w
+      } else if (!isFuture && t.plannedStart && t.plannedStart <= pointISO && t.plannedEnd && t.plannedEnd > pointISO) {
+        const tStart = new Date(t.plannedStart)
+        const tEnd = new Date(t.plannedEnd)
+        const totalDays = (tEnd.getTime() - tStart.getTime()) / 86400000
+        const elapsedDays = Math.max(0, (pointDate.getTime() - tStart.getTime()) / 86400000)
+        plannedDone += w * Math.min(1, totalDays > 0 ? elapsedDays / totalDays : 0)
+      }
+    })
+    const plannedCumulative = totalW ? Math.round(plannedDone / totalW * 100) : 0
+
+    // Executado: apenas passado + hoje
+    let execDone = 0
+    if (!isFuture) {
+      leaves.forEach(t => {
+        const w = t.weight || 1
+        const endRef = t.actualEnd || (t.status === 'COMPLETED' ? t.plannedEnd : null)
+        if (endRef && endRef <= pointISO) execDone += w
+        else if (t.status === 'IN_PROGRESS' && t.plannedStart && t.plannedStart <= pointISO)
+          execDone += w * (t.progress / 100)
+      })
+    }
+    const executedCumulative = !isFuture ? (totalW ? Math.round(execDone / totalW * 100) : 0) : null
+
+    rows.push({
+      period: label,
+      date: pointISO,
+      plannedCumulative,
+      executedCumulative,
+      isToday,
+      isFuture,
+    })
+
+    cur.setDate(cur.getDate() + 7)
+  }
+
+  // Garante que o ponto exato de hoje exista (se não caiu numa semana)
+  const hasToday = rows.some(r => r.isToday)
+  if (!hasToday) {
+    // Insere ponto "Hoje" entre os pontos existentes
+    let plannedDone = 0
+    leaves.forEach(t => {
+      const w = t.weight || 1
+      if (t.plannedEnd && t.plannedEnd <= todayISO) {
+        plannedDone += w
+      } else if (t.plannedStart && t.plannedStart <= todayISO && t.plannedEnd && t.plannedEnd > todayISO) {
+        const tStart = new Date(t.plannedStart)
+        const tEnd = new Date(t.plannedEnd)
+        const totalDays = (tEnd.getTime() - tStart.getTime()) / 86400000
+        const elapsedDays = Math.max(0, (todayDate.getTime() - tStart.getTime()) / 86400000)
+        plannedDone += w * Math.min(1, totalDays > 0 ? elapsedDays / totalDays : 0)
+      }
+    })
+    let execDone = 0
+    leaves.forEach(t => {
+      const w = t.weight || 1
+      const endRef = t.actualEnd || (t.status === 'COMPLETED' ? t.plannedEnd : null)
+      if (endRef && endRef <= todayISO) execDone += w
+      else if (t.status === 'IN_PROGRESS' && t.plannedStart && t.plannedStart <= todayISO)
+        execDone += w * (t.progress / 100)
+    })
+    const todayPoint = {
+      period: todayLabel,
+      date: todayISO,
+      plannedCumulative: totalW ? Math.round(plannedDone / totalW * 100) : 0,
+      executedCumulative: totalW ? Math.round(execDone / totalW * 100) : 0,
+      isToday: true,
+      isFuture: false,
+    }
+    const insertIdx = rows.findIndex(r => r.date > todayISO)
+    if (insertIdx >= 0) rows.splice(insertIdx, 0, todayPoint)
+    else rows.push(todayPoint)
+  }
+
+  return { rows, todayLabel }
+}
+
+// ── Tabela mensal (mantém granularidade mensal para leitura) ─────────────────
+function buildMonthlyData(tasks: Task[], lang: string) {
+  const leaves = tasks.filter(t => !t.isGroup)
+  if (!leaves.length) return []
+
+  const dates = leaves.flatMap(t => [t.plannedStart, t.plannedEnd].filter(Boolean) as string[])
+  if (!dates.length) return []
 
   const minD = dates.reduce((a, b) => a < b ? a : b)
   const maxD = dates.reduce((a, b) => a > b ? a : b)
@@ -73,23 +192,14 @@ function buildCurveData(tasks: Task[], lang: string) {
   const rows: any[] = []
   const cur = new Date(start)
 
-  const todayMonth = new Date(todayISO.slice(0, 7) + '-01')
-  const todayLabel = monthLabel(todayMonth, lang)
-
   while (cur <= end) {
     const endOfMonth = new Date(cur.getFullYear(), cur.getMonth() + 1, 0)
     const startOfMonth = new Date(cur.getFullYear(), cur.getMonth(), 1)
     const endStr = endOfMonth.toISOString().slice(0, 10)
     const label = monthLabel(new Date(cur), lang)
+    const isFuture = startOfMonth > todayDate
+    const isCurrent = !isFuture && endOfMonth >= todayDate
 
-    // Classifica o mês em relação a hoje
-    const isFuture = startOfMonth > todayDate   // mês ainda não começou
-    const isCurrent = !isFuture && endOfMonth >= todayDate // mês em curso
-
-    // ── Planejado acumulado ──────────────────────────────────────────────────
-    // Tarefas já encerradas no período: peso total
-    // Tarefas em andamento no período: peso proporcional ao tempo decorrido
-    // Meses futuros: apenas tarefas com término <= fim do mês (sem proporcional)
     let plannedDone = 0
     leaves.forEach(t => {
       const w = t.weight || 1
@@ -101,46 +211,36 @@ function buildCurveData(tasks: Task[], lang: string) {
         const refDate = isCurrent ? todayDate : endOfMonth
         const totalDays = (tEnd.getTime() - tStart.getTime()) / 86400000
         const elapsedDays = Math.max(0, (refDate.getTime() - tStart.getTime()) / 86400000)
-        const proportion = totalDays > 0 ? Math.min(1, elapsedDays / totalDays) : 0
-        plannedDone += w * proportion
+        plannedDone += w * Math.min(1, totalDays > 0 ? elapsedDays / totalDays : 0)
       }
     })
     const plannedCumulative = totalW ? Math.round(plannedDone / totalW * 100) : 0
 
-    // ── Executado acumulado ──────────────────────────────────────────────────
-    // Passado e mês corrente têm dados reais; futuro = null
     const hasExecData = !isFuture
     let execDone = 0
     if (hasExecData) {
-      const refDate = isCurrent ? todayDate : endOfMonth
-      const refStr = refDate.toISOString().slice(0, 10)
+      const refStr = (isCurrent ? todayDate : endOfMonth).toISOString().slice(0, 10)
       leaves.forEach(t => {
         const w = t.weight || 1
         const endRef = t.actualEnd || (t.status === 'COMPLETED' ? t.plannedEnd : null)
-        if (endRef && endRef <= refStr) {
-          execDone += w
-        } else if (t.status === 'IN_PROGRESS' && t.plannedStart && t.plannedStart <= refStr) {
+        if (endRef && endRef <= refStr) execDone += w
+        else if (t.status === 'IN_PROGRESS' && t.plannedStart && t.plannedStart <= refStr)
           execDone += w * (t.progress / 100)
-        }
       })
     }
     const executedCumulative = hasExecData ? (totalW ? Math.round(execDone / totalW * 100) : 0) : null
 
-    // ── Avanço do período (para gráfico de barras) ───────────────────────────
     const prevEnd = new Date(cur); prevEnd.setDate(0)
     const prevEndStr = prevEnd.toISOString().slice(0, 10)
     let plannedPrev = 0
-    leaves.forEach(t => {
-      if (t.plannedEnd && t.plannedEnd <= prevEndStr) plannedPrev += (t.weight || 1)
-    })
+    leaves.forEach(t => { if (t.plannedEnd && t.plannedEnd <= prevEndStr) plannedPrev += (t.weight || 1) })
     const plannedPeriod = Math.round((plannedDone - plannedPrev) / totalW * 100)
 
     let execPrev = 0
     if (hasExecData) {
       leaves.forEach(t => {
-        const w = t.weight || 1
         const endRef = t.actualEnd || (t.status === 'COMPLETED' ? t.plannedEnd : null)
-        if (endRef && endRef <= prevEndStr) execPrev += w
+        if (endRef && endRef <= prevEndStr) execPrev += (t.weight || 1)
       })
     }
     const executedPeriod = hasExecData ? Math.round((execDone - execPrev) / totalW * 100) : null
@@ -149,13 +249,21 @@ function buildCurveData(tasks: Task[], lang: string) {
     rows.push({ period: label, plannedCumulative, executedCumulative, plannedPeriod, executedPeriod, deviation, isCurrent, isFuture })
     cur.setMonth(cur.getMonth() + 1)
   }
-
-  return { rows, todayLabel }
+  return rows
 }
 
-const tt = {
-  contentStyle: { background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' },
-  formatter: (v: any, n: string) => [v != null ? v + '%' : '—', n]
+// Tooltip customizado para o gráfico semanal
+const CustomTooltip = ({ active, payload, label, lang }: any) => {
+  if (!active || !payload?.length) return null
+  const planned = payload.find((p: any) => p.dataKey === 'plannedCumulative')
+  const executed = payload.find((p: any) => p.dataKey === 'executedCumulative')
+  return (
+    <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', fontSize: 12 }}>
+      <p style={{ fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>{label}</p>
+      {planned && <p style={{ color: '#60a5fa', margin: '2px 0' }}>{lang === 'pt' ? 'Planejado' : 'Planned'}: <strong>{planned.value}%</strong></p>}
+      {executed && executed.value != null && <p style={{ color: '#4ade80', margin: '2px 0' }}>{lang === 'pt' ? 'Executado' : 'Executed'}: <strong>{executed.value}%</strong></p>}
+    </div>
+  )
 }
 
 export default function CurveSPage() {
@@ -178,13 +286,13 @@ export default function CurveSPage() {
 
   useEffect(() => { load() }, [load])
 
-  const { rows: data, todayLabel } = buildCurveData(tasks, lang)
+  const { rows: weeklyData, todayLabel } = buildWeeklyData(tasks, lang)
+  const monthlyData = buildMonthlyData(tasks, lang)
 
-  // KPIs usam o mês corrente como referência (não o último mês executado)
-  const currentRow = data.find(d => d.isCurrent)
-  const lastExecRow = currentRow ?? [...data].reverse().find(d => d.executedCumulative !== null)
-  const execVal = lastExecRow?.executedCumulative ?? 0
-  const planVal = lastExecRow?.plannedCumulative ?? 0
+  // KPIs: usa o ponto "Hoje" do gráfico semanal
+  const todayPoint = weeklyData.find(r => r.isToday)
+  const execVal = todayPoint?.executedCumulative ?? 0
+  const planVal = todayPoint?.plannedCumulative ?? 0
   const deviation = execVal - planVal
 
   const trend = calcTrend(tasks, lang)
@@ -204,6 +312,9 @@ export default function CurveSPage() {
     return 'badge-blue'
   }
 
+  // Reduz labels no eixo X: mostra só 1 a cada 2 semanas para não poluir
+  const tickFormatter = (value: string, index: number) => index % 2 === 0 ? value : ''
+
   if (!activeProject) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--text3)' }}>
       Selecione um projeto para começar.
@@ -219,9 +330,7 @@ export default function CurveSPage() {
 
       {trend.label === (lang === 'pt' ? 'Atrasado' : 'Delayed') && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 8, fontSize: 13, color: '#fbbf24' }}>
-          ⚠ {lang === 'pt'
-            ? `Projeto com tendência de atraso — ${trend.detail}.`
-            : `Project at risk of delay — ${trend.detail}.`}
+          ⚠ {lang === 'pt' ? `Projeto com tendência de atraso — ${trend.detail}.` : `Project at risk of delay — ${trend.detail}.`}
         </div>
       )}
 
@@ -231,6 +340,7 @@ export default function CurveSPage() {
         <div style={{ color: 'var(--text3)', fontSize: 14 }}>{lang === 'pt' ? 'Nenhuma tarefa cadastrada' : 'No tasks yet'}</div>
       ) : (
         <>
+          {/* KPIs — baseados no ponto exato de hoje */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14 }}>
             {[
               { label: c.kpi1, value: planVal + '%', color: '#60a5fa' },
@@ -248,11 +358,17 @@ export default function CurveSPage() {
             ))}
           </div>
 
+          {/* Gráfico semanal — linha "Hoje" no dia exato */}
           <div className="card">
-            <div className="card-header"><h2 className="card-title">{c.chartTitle}</h2></div>
+            <div className="card-header">
+              <h2 className="card-title">{c.chartTitle}</h2>
+              <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 8 }}>
+                {lang === 'pt' ? '(granularidade semanal)' : '(weekly granularity)'}
+              </span>
+            </div>
             <div style={{ padding: '16px 16px 16px 0', height: 340 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={data} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
+                <ComposedChart data={weeklyData} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gP" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2} />
@@ -264,37 +380,46 @@ export default function CurveSPage() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="period" tick={{ fill: 'var(--text3)', fontSize: 11 }} axisLine={{ stroke: 'var(--border)' }} tickLine={false} />
+                  <XAxis
+                    dataKey="period"
+                    tick={{ fill: 'var(--text3)', fontSize: 10 }}
+                    axisLine={{ stroke: 'var(--border)' }}
+                    tickLine={false}
+                    tickFormatter={tickFormatter}
+                    interval={0}
+                  />
                   <YAxis tick={{ fill: 'var(--text3)', fontSize: 11 }} axisLine={{ stroke: 'var(--border)' }} tickLine={false} domain={[0, 100]} tickFormatter={v => v + '%'} />
-                  <Tooltip {...tt} />
+                  <Tooltip content={<CustomTooltip lang={lang} />} />
                   <Legend wrapperStyle={{ fontSize: 12, paddingTop: 12 }} formatter={(v: string) => <span style={{ color: 'var(--text2)' }}>{v}</span>} />
+                  {/* Linha "Hoje" no dia exato */}
                   <ReferenceLine
                     x={todayLabel}
                     stroke="var(--red)"
-                    strokeWidth={1.5}
+                    strokeWidth={2}
                     strokeDasharray="5,4"
-                    label={{ value: lang === 'pt' ? 'Hoje' : 'Today', fill: 'var(--red)', fontSize: 10, position: 'top' }}
+                    label={{ value: lang === 'pt' ? `Hoje ${todayISO.slice(8,10)}/${todayISO.slice(5,7)}` : `Today ${todayISO.slice(5,7)}/${todayISO.slice(8,10)}`, fill: 'var(--red)', fontSize: 10, position: 'insideTopRight' }}
                   />
-                  <Area type="monotone" dataKey="plannedCumulative" name={c.planned} stroke="#3b82f6" strokeWidth={2.5} fill="url(#gP)" dot={{ fill: '#3b82f6', r: 3 }} connectNulls />
-                  <Area type="monotone" dataKey="executedCumulative" name={c.executed} stroke="#22c55e" strokeWidth={2.5} fill="url(#gE)" dot={{ fill: '#22c55e', r: 4 }} connectNulls={false} />
-                </AreaChart>
+                  <Area type="monotone" dataKey="plannedCumulative" name={lang === 'pt' ? 'Planejado' : 'Planned'} stroke="#3b82f6" strokeWidth={2.5} fill="url(#gP)" dot={false} connectNulls />
+                  <Area type="monotone" dataKey="executedCumulative" name={lang === 'pt' ? 'Executado' : 'Executed'} stroke="#22c55e" strokeWidth={2.5} fill="url(#gE)" dot={false} connectNulls={false} />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </div>
 
+          {/* Barras mensais + Tabela mensal */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div className="card">
               <div className="card-header"><h2 className="card-title">{c.barTitle}</h2></div>
               <div style={{ padding: '12px 12px 12px 0', height: 220 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data} barGap={4} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                  <BarChart data={monthlyData} barGap={4} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                     <XAxis dataKey="period" tick={{ fill: 'var(--text3)', fontSize: 10 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fill: 'var(--text3)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => v + '%'} />
-                    <Tooltip {...tt} />
+                    <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8 }} formatter={(v: any, n: string) => [v != null ? v + '%' : '—', n]} />
                     <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} formatter={(v: string) => <span style={{ color: 'var(--text2)' }}>{v}</span>} />
-                    <Bar dataKey="plannedPeriod" name={c.planned} fill="#3b82f6" fillOpacity={.7} radius={[2, 2, 0, 0]} />
-                    <Bar dataKey="executedPeriod" name={c.executed} fill="#22c55e" fillOpacity={.8} radius={[2, 2, 0, 0]} />
+                    <Bar dataKey="plannedPeriod" name={lang === 'pt' ? 'Planejado' : 'Planned'} fill="#3b82f6" fillOpacity={.7} radius={[2, 2, 0, 0]} />
+                    <Bar dataKey="executedPeriod" name={lang === 'pt' ? 'Executado' : 'Executed'} fill="#22c55e" fillOpacity={.8} radius={[2, 2, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -307,15 +432,11 @@ export default function CurveSPage() {
                   <thead>
                     <tr>{[c.colPeriod, c.colPlanAcum, c.colExecAcum, c.colDesvio, c.colStatus].map(h => <th key={h}>{h}</th>)}</tr>
                   </thead>
-                  <tbody>{data.map(d => (
+                  <tbody>{monthlyData.map((d: any) => (
                     <tr key={d.period} style={d.isCurrent ? { background: 'rgba(59,130,246,0.07)', fontWeight: 600 } : {}}>
                       <td style={{ fontWeight: 600 }}>
                         {d.period}
-                        {d.isCurrent && (
-                          <span style={{ marginLeft: 6, fontSize: 9, color: 'var(--red)', fontWeight: 700 }}>
-                            ● {lang === 'pt' ? 'Hoje' : 'Today'}
-                          </span>
-                        )}
+                        {d.isCurrent && <span style={{ marginLeft: 6, fontSize: 9, color: 'var(--red)', fontWeight: 700 }}>● {lang === 'pt' ? 'Hoje' : 'Today'}</span>}
                       </td>
                       <td style={{ color: '#60a5fa' }}>{d.plannedCumulative}%</td>
                       <td style={{ color: d.executedCumulative != null ? '#4ade80' : 'var(--text3)' }}>
