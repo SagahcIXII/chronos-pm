@@ -124,34 +124,59 @@ function buildWeeklyData(tasks: Task[], lang: string) {
   const totalW = leaves.reduce((s, t) => s + (t.weight || 1), 0)
   const rows: any[] = []
   const cur = new Date(start)
-  const todayLabel = weekLabel(new Date(todayISO), lang)
 
-  // Gera pontos semanais — o ponto "Hoje" é o mais próximo de hoje no ciclo
-  // (não inserimos ponto extra para não quebrar o eixo X do Recharts)
+  // Label do ponto de hoje — usado no array e na ReferenceLine
+  const todayLabel = weekLabel(todayDate, lang)
+  let todayInserted = false
+
   while (cur <= end) {
     const pointDate = new Date(cur)
     const pointISO = pointDate.toISOString().slice(0, 10)
+
+    // Insere o ponto de hoje antes do primeiro ponto futuro
+    if (!todayInserted && pointISO > todayISO) {
+      rows.push({
+        period: todayLabel,
+        date: todayISO,
+        plannedCumulative: calcPlanned(leaves, totalW, todayDate, todayISO),
+        executedCumulative: calcExecuted(leaves, totalW, todayISO),
+        isToday: true,
+        isFuture: false,
+      })
+      todayInserted = true
+    }
+
     const isFuture = pointDate > todayDate
+    const isToday = pointISO === todayISO
+    if (isToday) todayInserted = true
 
-    const plannedCumulative = calcPlanned(leaves, totalW, pointDate, pointISO)
-    const executedCumulative = !isFuture ? calcExecuted(leaves, totalW, pointISO) : null
-
-    rows.push({ period: weekLabel(pointDate, lang), date: pointISO, plannedCumulative, executedCumulative, isToday: false, isFuture })
+    rows.push({
+      period: isToday ? todayLabel : weekLabel(pointDate, lang),
+      date: pointISO,
+      plannedCumulative: calcPlanned(leaves, totalW, pointDate, pointISO),
+      executedCumulative: !isFuture ? calcExecuted(leaves, totalW, pointISO) : null,
+      isToday,
+      isFuture,
+    })
     cur.setDate(cur.getDate() + 7)
   }
 
-  // Marca o ponto semanal mais próximo de hoje (sem ultrapassar) como isToday
-  // e calcula seus valores no dia exato de hoje
-  const todayPointIdx = [...rows].reverse().findIndex(r => r.date <= todayISO)
-  if (todayPointIdx >= 0) {
-    const realIdx = rows.length - 1 - todayPointIdx
-    rows[realIdx].isToday = true
-    // Recalcula no dia exato de hoje para o KPI ser preciso
-    rows[realIdx].plannedCumulative = calcPlanned(leaves, totalW, todayDate, todayISO)
-    rows[realIdx].executedCumulative = calcExecuted(leaves, totalW, todayISO)
+  // Garante ponto de hoje se ainda não inserido
+  if (!todayInserted) {
+    rows.push({
+      period: todayLabel,
+      date: todayISO,
+      plannedCumulative: calcPlanned(leaves, totalW, todayDate, todayISO),
+      executedCumulative: calcExecuted(leaves, totalW, todayISO),
+      isToday: true,
+      isFuture: false,
+    })
   }
 
-  // Monotonicidade: planejado nunca decresce
+  // Ordena por data
+  rows.sort((a, b) => a.date.localeCompare(b.date))
+
+  // Monotonicidade
   for (let i = 1; i < rows.length; i++) {
     if (rows[i].plannedCumulative < rows[i - 1].plannedCumulative) {
       rows[i].plannedCumulative = rows[i - 1].plannedCumulative
@@ -160,7 +185,6 @@ function buildWeeklyData(tasks: Task[], lang: string) {
 
   return { rows, todayLabel }
 }
-
 // ── Tabela e barras: granularidade MENSAL ────────────────────────────────────
 function buildMonthlyData(tasks: Task[], lang: string) {
   const leaves = tasks.filter(t => !t.isGroup)
