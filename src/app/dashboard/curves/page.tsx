@@ -126,8 +126,21 @@ function buildWeeklyData(tasks: Task[], lang: string) {
   const cur = new Date(start)
   const todayLabel = weekLabel(new Date(todayISO), lang)
 
-  while (cur <= end) {
-    const pointDate = new Date(cur)
+  // Gera pontos semanais + ponto exato de hoje no meio do ciclo
+  const pointsToRender: Date[] = []
+  const tempCur = new Date(start)
+  while (tempCur <= end) {
+    pointsToRender.push(new Date(tempCur))
+    // Se hoje cai entre este ponto e o próximo, insere hoje
+    const next = new Date(tempCur)
+    next.setDate(next.getDate() + 7)
+    if (tempCur.toISOString().slice(0,10) < todayISO && next.toISOString().slice(0,10) > todayISO) {
+      pointsToRender.push(new Date(todayISO))
+    }
+    tempCur.setDate(tempCur.getDate() + 7)
+  }
+
+  for (const pointDate of pointsToRender) {
     const pointISO = pointDate.toISOString().slice(0, 10)
     const isFuture = pointDate > todayDate
     const isToday = pointISO === todayISO
@@ -136,22 +149,9 @@ function buildWeeklyData(tasks: Task[], lang: string) {
     const executedCumulative = !isFuture ? calcExecuted(leaves, totalW, pointISO) : null
 
     rows.push({ period: weekLabel(pointDate, lang), date: pointISO, plannedCumulative, executedCumulative, isToday, isFuture })
-    cur.setDate(cur.getDate() + 7)
   }
 
-  // Garante ponto exato de hoje
-  if (!rows.some(r => r.isToday)) {
-    const todayPoint = {
-      period: todayLabel, date: todayISO, isToday: true, isFuture: false,
-      plannedCumulative: calcPlanned(leaves, totalW, todayDate, todayISO),
-      executedCumulative: calcExecuted(leaves, totalW, todayISO),
-    }
-    const idx = rows.findIndex(r => r.date > todayISO)
-    if (idx >= 0) rows.splice(idx, 0, todayPoint)
-    else rows.push(todayPoint)
-  }
-
-  // Garante monotonicidade
+  // Monotonicidade: planejado nunca decresce
   for (let i = 1; i < rows.length; i++) {
     if (rows[i].plannedCumulative < rows[i - 1].plannedCumulative) {
       rows[i].plannedCumulative = rows[i - 1].plannedCumulative
