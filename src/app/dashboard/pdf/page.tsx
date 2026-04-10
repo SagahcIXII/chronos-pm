@@ -101,8 +101,10 @@ export default function PDFPage() {
   const [senderName, setSenderName] = useState('')
   const [emailStatus, setEmailStatus] = useState<'idle'|'sending'|'success'|'error'>('idle')
   const [emailMsg, setEmailMsg] = useState('')
-  // Planos de recuperação para as 3 tarefas com maior desvio
-  const [recoveryPlans, setRecoveryPlans] = useState<Record<string, string>>({})
+  // Seleção e planos de recuperação para o relatório executivo
+  const [selectedItems, setSelectedItems] = useState<Record<string, boolean>>({})
+  const [itemContext, setItemContext] = useState<Record<string, string>>({})
+  const [itemAction, setItemAction] = useState<Record<string, string>>({})
 
   const load = useCallback(async () => {
     if (!activeProject?.id) return
@@ -149,19 +151,21 @@ export default function PDFPage() {
   const planVal = lastExecRow?.plannedCumulative ?? 0
   const deviation = execVal - planVal
 
-  // Top 3 tarefas com maior desvio individual (timeProgress - taskProgress)
-  const top3Critical = [...leaves]
+  // Todas as tarefas com desvio, ordenadas do maior para o menor
+  const tasksWithGap = [...leaves]
     .filter(t => t.status !== 'COMPLETED' && t.plannedStart && t.plannedEnd)
     .map(t => {
       const totalDays = (new Date(t.plannedEnd!).getTime() - new Date(t.plannedStart!).getTime()) / 86400000
       const elapsed = Math.max(0, (todayDate.getTime() - new Date(t.plannedStart!).getTime()) / 86400000)
       const timePct = totalDays > 0 ? Math.min(100, Math.round((elapsed / totalDays) * 100)) : 0
-      const gap = timePct - t.progress // quanto está atrasado em relação ao tempo decorrido
+      const gap = timePct - t.progress
       return { ...t, timePct, gap }
     })
-    .filter(t => t.gap > 0) // só os que estão atrás do tempo
+    .filter(t => t.gap > 0)
     .sort((a, b) => b.gap - a.gap)
-    .slice(0, 3)
+
+  // Itens selecionados para o relatório (na ordem de seleção)
+  const reportItems = tasksWithGap.filter(t => selectedItems[t.id])
 
   const fields = [
     [pt?'Projeto':'Project', activeProject.name],
@@ -266,29 +270,45 @@ export default function PDFPage() {
         <div style="color:#e8edf5;font-size:22pt;font-weight:800;line-height:1">${v}</div>
       </div>`).join('')
 
-    // ── Top 3 tarefas críticas com plano de recuperação ─────────────────────────
-    const top3HTML = top3Critical.length > 0 ? `
+    // ── Itens selecionados com contexto e contramedida ───────────────────────────
+    const reportItemsHTML = reportItems.length > 0 ? `
       <div style="margin-top:5mm">
-        <h2 style="color:#ef4444;border-bottom-color:#ef4444">${pt?'⚠ Top 3 Desvios Críticos — Plano de Recuperação':'⚠ Top 3 Critical Deviations — Recovery Plan'}</h2>
-        ${top3Critical.map((t, i) => {
-          const plan = recoveryPlans[t.id] || (pt ? 'Plano de recuperação não informado.' : 'Recovery plan not provided.')
+        <h2 style="color:#ef4444;border-bottom-color:#ef4444;font-size:11pt;font-weight:800;padding-bottom:2mm;margin-bottom:3mm;border-bottom:1px solid #ef4444">
+          ⚠ ${pt?'Desvios Críticos — Análise e Contramedidas':'Critical Deviations — Analysis & Countermeasures'}
+        </h2>
+        ${reportItems.map((t, i) => {
+          const ctx = itemContext[t.id] || ''
+          const act = itemAction[t.id] || ''
           const gapColor = t.gap > 50 ? '#ef4444' : t.gap > 25 ? '#f59e0b' : '#fbbf24'
+          const barPct = t.timePct > 0 ? Math.round((t.progress / t.timePct) * 100) : 0
           return `<div style="margin-bottom:4mm;background:#1a2235;border-radius:2mm;padding:4mm 5mm;border-left:3px solid ${gapColor}">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2mm">
-              <div style="font-size:9pt;font-weight:700;color:#e8edf5">${i+1}. ${t.name}</div>
-              <div style="display:flex;gap:3mm;align-items:center">
-                <span style="font-size:7.5pt;color:#9aabc4">${pt?'Prazo decorrido':'Time elapsed'}: <strong style="color:#60a5fa">${t.timePct}%</strong></span>
-                <span style="font-size:7.5pt;color:#9aabc4">${pt?'Progresso':'Progress'}: <strong style="color:#4ade80">${t.progress}%</strong></span>
-                <span style="background:${gapColor}22;color:${gapColor};font-size:8pt;font-weight:700;padding:1mm 3mm;border-radius:1mm">${pt?'Desvio':'Gap'}: -${t.gap}pp</span>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2.5mm">
+              <div style="font-size:9.5pt;font-weight:700;color:#e8edf5;max-width:60%">${i+1}. ${t.name}${t.responsible?`<span style="font-size:7.5pt;color:#9aabc4;font-weight:400;margin-left:3mm">${t.responsible}</span>`:''}</div>
+              <div style="display:flex;gap:2.5mm;flex-wrap:wrap;justify-content:flex-end">
+                <span style="font-size:7.5pt;background:#1e3a5f;color:#60a5fa;padding:1mm 2.5mm;border-radius:1mm">${pt?'Prazo':'Time'}: ${t.timePct}%</span>
+                <span style="font-size:7.5pt;background:#1a3a2a;color:#4ade80;padding:1mm 2.5mm;border-radius:1mm">${pt?'Progresso':'Progress'}: ${t.progress}%</span>
+                <span style="font-size:8pt;font-weight:700;background:${gapColor}22;color:${gapColor};padding:1mm 3mm;border-radius:1mm">Δ -${t.gap}pp</span>
               </div>
             </div>
-            <div style="background:#222d42;border-radius:1mm;height:3mm;margin-bottom:2.5mm">
-              <div style="background:#3b82f6;width:${t.timePct}%;height:3mm;border-radius:1mm;position:relative">
-                <div style="background:#22c55e;width:${Math.round(t.progress/t.timePct*100)}%;height:3mm;border-radius:1mm"></div>
+            <div style="margin-bottom:3mm">
+              <div style="display:flex;justify-content:space-between;font-size:7pt;color:#5a6a84;margin-bottom:1mm">
+                <span>${pt?'Prazo decorrido':'Elapsed'}</span><span>${pt?'Progresso real':'Actual progress'}</span>
+              </div>
+              <div style="background:#222d42;border-radius:1mm;height:4mm;margin-bottom:1.5mm">
+                <div style="background:#3b82f6;width:${t.timePct}%;height:4mm;border-radius:1mm"></div>
+              </div>
+              <div style="background:#222d42;border-radius:1mm;height:4mm">
+                <div style="background:${gapColor};width:${t.progress}%;height:4mm;border-radius:1mm"></div>
               </div>
             </div>
-            <div style="font-size:8pt;color:#9aabc4;margin-bottom:1mm;text-transform:uppercase;letter-spacing:.5px">${pt?'Plano de Recuperação':'Recovery Plan'}</div>
-            <div style="font-size:8.5pt;color:#e8edf5;line-height:1.6;background:#111827;padding:2.5mm 3mm;border-radius:1mm">${plan}</div>
+            ${ctx ? `<div style="margin-bottom:2.5mm">
+              <div style="font-size:7.5pt;color:#9aabc4;text-transform:uppercase;letter-spacing:.5px;margin-bottom:1mm;font-weight:600">📋 ${pt?'Contexto / Causa':'Context / Cause'}</div>
+              <div style="font-size:8.5pt;color:#e8edf5;line-height:1.6;background:#111827;padding:2.5mm 3mm;border-radius:1mm;border-left:2px solid #3b82f6">${ctx}</div>
+            </div>` : ''}
+            ${act ? `<div>
+              <div style="font-size:7.5pt;color:#9aabc4;text-transform:uppercase;letter-spacing:.5px;margin-bottom:1mm;font-weight:600">⚡ ${pt?'Contramedida':'Countermeasure'}</div>
+              <div style="font-size:8.5pt;color:#e8edf5;line-height:1.6;background:#111827;padding:2.5mm 3mm;border-radius:1mm;border-left:2px solid #22c55e">${act}</div>
+            </div>` : ''}
           </div>`
         }).join('')}
       </div>` : ''
@@ -435,7 +455,7 @@ export default function PDFPage() {
       </div>
       <h2>${pt?'Indicadores do Projeto':'Project Indicators'}</h2>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3mm">${kpisHTML}</div>
-      ${top3HTML}
+      ${reportItemsHTML}
     </div>
     <div>
       <h1 style="margin-top:0">${groups.length>0?(pt?'Avanço por Fase':'Phase Progress'):(pt?'Avanço por Tarefa':'Task Progress')}</h1>
@@ -534,54 +554,95 @@ export default function PDFPage() {
         </div>
       </div>
 
-      {/* Seção de Plano de Recuperação */}
-      {top3Critical.length > 0 && (
+      {/* Seção de Desvios Críticos — seleção manual */}
+      {tasksWithGap.length > 0 && (
         <div className="card">
           <div className="card-header">
-            <h2 className="card-title">⚠ {pt?'Top 3 Desvios Críticos — Plano de Recuperação':'Top 3 Critical Deviations — Recovery Plan'}</h2>
+            <h2 className="card-title">⚠ {pt?'Desvios Críticos — Análise e Contramedidas':'Critical Deviations — Analysis & Countermeasures'}</h2>
           </div>
-          <div className="card-body" style={{display:'flex',flexDirection:'column',gap:16}}>
-            <p style={{fontSize:13,color:'var(--text3)'}}>
-              {pt?'As tarefas abaixo apresentam maior desvio entre o prazo decorrido e o progresso real. Preencha o plano de recuperação para cada uma antes de gerar o PDF.':'The tasks below show the largest gap between elapsed time and actual progress. Fill in the recovery plan for each before generating the PDF.'}
+          <div className="card-body" style={{display:'flex',flexDirection:'column',gap:0}}>
+            <p style={{fontSize:13,color:'var(--text3)',marginBottom:16}}>
+              {pt
+                ?'Selecione as ocorrências que deseja reportar à diretoria. Para cada uma, descreva o contexto (causa do desvio) e a contramedida (ação corretiva). Apenas os itens selecionados aparecerão no PDF.'
+                :'Select the items you want to report to management. For each, describe the context (cause) and countermeasure (corrective action). Only selected items will appear in the PDF.'}
             </p>
-            {top3Critical.map((t, i) => (
-              <div key={t.id} style={{background:'var(--surface2)',border:`1px solid ${t.gap>50?'rgba(239,68,68,0.4)':t.gap>25?'rgba(245,158,11,0.4)':'rgba(251,191,36,0.3)'}`,borderRadius:8,padding:16,borderLeft:`3px solid ${t.gap>50?'#ef4444':t.gap>25?'#f59e0b':'#fbbf24'}`}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-                  <div>
-                    <span style={{fontSize:11,fontWeight:700,color:'var(--text3)',marginRight:8}}>#{i+1}</span>
-                    <span style={{fontSize:14,fontWeight:700,color:'var(--text)'}}>{t.name}</span>
-                  </div>
-                  <div style={{display:'flex',gap:12}}>
-                    <span style={{fontSize:12,color:'var(--text3)'}}>⏱ {pt?'Prazo decorrido':'Time elapsed'}: <strong style={{color:'#60a5fa'}}>{t.timePct}%</strong></span>
-                    <span style={{fontSize:12,color:'var(--text3)'}}>📊 {pt?'Progresso':'Progress'}: <strong style={{color:'#4ade80'}}>{t.progress}%</strong></span>
-                    <span style={{fontSize:12,fontWeight:700,color:t.gap>50?'#ef4444':t.gap>25?'#f59e0b':'#fbbf24'}}>⚠ Desvio: -{t.gap}pp</span>
-                  </div>
-                </div>
-                <div style={{marginBottom:10}}>
-                  <div style={{background:'var(--border)',borderRadius:3,height:6,marginBottom:4}}>
-                    <div style={{background:'#3b82f6',width:`${t.timePct}%`,height:6,borderRadius:3}}/>
-                  </div>
-                  <div style={{display:'flex',gap:8}}>
-                    <span style={{fontSize:10,color:'#60a5fa'}}>▬ {pt?'Prazo decorrido':'Time elapsed'}</span>
-                    <div style={{background:'var(--border)',borderRadius:3,height:6,flex:1,alignSelf:'center'}}>
-                      <div style={{background:'#22c55e',width:`${t.progress}%`,height:6,borderRadius:3}}/>
-                    </div>
-                    <span style={{fontSize:10,color:'#4ade80'}}>▬ {pt?'Executado':'Executed'}</span>
-                  </div>
-                </div>
-                <label style={{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',display:'block',marginBottom:6}}>
-                  {pt?'Plano de Recuperação':'Recovery Plan'}
-                </label>
-                <textarea
-                  className="form-control"
-                  rows={3}
-                  placeholder={pt?`Ex: Mobilizar equipe adicional, aumentar turno para ${t.name}, meta de +${Math.ceil(t.gap/2)}% por semana...`:`Ex: Mobilize additional team, increase shift for ${t.name}, target +${Math.ceil(t.gap/2)}% per week...`}
-                  value={recoveryPlans[t.id] || ''}
-                  onChange={e => setRecoveryPlans(prev => ({...prev, [t.id]: e.target.value}))}
-                  style={{width:'100%',fontSize:13,resize:'vertical'}}
-                />
+
+            {/* Tabela de seleção */}
+            <div style={{marginBottom:20}}>
+              <div style={{display:'grid',gridTemplateColumns:'32px 1fr 80px 80px 70px',gap:'0 12px',padding:'8px 0',borderBottom:'1px solid var(--border)',marginBottom:4}}>
+                <div/>
+                <div style={{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px'}}>{pt?'Tarefa':'Task'}</div>
+                <div style={{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',textAlign:'center'}}>{pt?'Prazo':'Time'}</div>
+                <div style={{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',textAlign:'center'}}>{pt?'Progresso':'Progress'}</div>
+                <div style={{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',textAlign:'center'}}>Δ Gap</div>
               </div>
-            ))}
+              {tasksWithGap.map(t => (
+                <div key={t.id} style={{display:'grid',gridTemplateColumns:'32px 1fr 80px 80px 70px',gap:'0 12px',padding:'10px 0',borderBottom:'1px solid var(--border)',alignItems:'center',background:selectedItems[t.id]?'rgba(59,130,246,0.05)':'transparent',cursor:'pointer'}}
+                  onClick={() => setSelectedItems(prev => ({...prev, [t.id]: !prev[t.id]}))}>
+                  <input type="checkbox" checked={!!selectedItems[t.id]} onChange={()=>{}} style={{cursor:'pointer',width:16,height:16,accentColor:'#3b82f6'}}/>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:selectedItems[t.id]?600:400,color:'var(--text)'}}>{t.name}</div>
+                    {t.responsible && <div style={{fontSize:11,color:'var(--text3)'}}>{t.responsible}</div>}
+                  </div>
+                  <div style={{textAlign:'center',fontSize:13,color:'#60a5fa',fontWeight:600}}>{t.timePct}%</div>
+                  <div style={{textAlign:'center',fontSize:13,color:'#4ade80',fontWeight:600}}>{t.progress}%</div>
+                  <div style={{textAlign:'center',fontSize:13,fontWeight:700,color:t.gap>50?'#ef4444':t.gap>25?'#f59e0b':'#fbbf24'}}>-{t.gap}pp</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Campos de contexto e contramedida para cada selecionado */}
+            {reportItems.length > 0 && (
+              <div style={{display:'flex',flexDirection:'column',gap:16}}>
+                <div style={{fontSize:13,fontWeight:600,color:'var(--text)',paddingTop:4,borderTop:'1px solid var(--border)'}}>
+                  {pt?`${reportItems.length} item(ns) selecionado(s) — preencha contexto e contramedida:`:`${reportItems.length} item(s) selected — fill in context and countermeasure:`}
+                </div>
+                {reportItems.map((t, i) => (
+                  <div key={t.id} style={{background:'var(--surface2)',border:`1px solid ${t.gap>50?'rgba(239,68,68,0.3)':t.gap>25?'rgba(245,158,11,0.3)':'rgba(251,191,36,0.25)'}`,borderRadius:8,padding:16,borderLeft:`3px solid ${t.gap>50?'#ef4444':t.gap>25?'#f59e0b':'#fbbf24'}`}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+                      <div style={{display:'flex',alignItems:'center',gap:10}}>
+                        <span style={{fontSize:11,fontWeight:700,color:'var(--text3)'}}>#{i+1}</span>
+                        <span style={{fontSize:14,fontWeight:700,color:'var(--text)'}}>{t.name}</span>
+                        {t.responsible && <span style={{fontSize:12,color:'var(--text3)'}}>· {t.responsible}</span>}
+                      </div>
+                      <div style={{display:'flex',gap:8}}>
+                        <span style={{fontSize:12,color:'#60a5fa',background:'rgba(59,130,246,0.1)',padding:'3px 8px',borderRadius:4}}>{pt?'Prazo':'Time'}: {t.timePct}%</span>
+                        <span style={{fontSize:12,color:'#4ade80',background:'rgba(34,197,94,0.1)',padding:'3px 8px',borderRadius:4}}>{pt?'Prog.':'Prog.'}: {t.progress}%</span>
+                        <span style={{fontSize:12,fontWeight:700,color:t.gap>50?'#ef4444':t.gap>25?'#f59e0b':'#fbbf24',background:t.gap>50?'rgba(239,68,68,0.1)':t.gap>25?'rgba(245,158,11,0.1)':'rgba(251,191,36,0.1)',padding:'3px 8px',borderRadius:4}}>Δ -{t.gap}pp</span>
+                      </div>
+                    </div>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                      <div>
+                        <label style={{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',display:'block',marginBottom:6}}>
+                          📋 {pt?'Contexto / Causa':'Context / Cause'}
+                        </label>
+                        <textarea
+                          className="form-control"
+                          rows={4}
+                          placeholder={pt?'Descreva a causa do desvio, fatores externos, bloqueios...':'Describe the cause of delay, external factors, blockers...'}
+                          value={itemContext[t.id] || ''}
+                          onChange={e => setItemContext(prev => ({...prev, [t.id]: e.target.value}))}
+                          style={{width:'100%',fontSize:13,resize:'vertical'}}
+                        />
+                      </div>
+                      <div>
+                        <label style={{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',display:'block',marginBottom:6}}>
+                          ⚡ {pt?'Contramedida':'Countermeasure'}
+                        </label>
+                        <textarea
+                          className="form-control"
+                          rows={4}
+                          placeholder={pt?'Descreva a ação corretiva, responsável e prazo de recuperação...':'Describe corrective action, owner and recovery deadline...'}
+                          value={itemAction[t.id] || ''}
+                          onChange={e => setItemAction(prev => ({...prev, [t.id]: e.target.value}))}
+                          style={{width:'100%',fontSize:13,resize:'vertical'}}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
