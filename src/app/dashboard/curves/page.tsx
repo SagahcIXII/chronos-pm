@@ -65,17 +65,18 @@ function calcPlanned(leaves: Task[], _totalW: number, pointDate: Date, projectSt
   const elapsed = (pointDate.getTime() - start.getTime()) / 86400000
   return Math.min(100, Math.max(0, Math.round((elapsed / totalDays) * 100)))
 }
-// ── Executado: progresso real ponderado das tarefas ──────────────────────────
-function calcExecuted(leaves: Task[], totalW: number, pointISO: string): number {
-  let execDone = 0
-  leaves.forEach(t => {
-    const w = t.weight || 1
+// ── Executado: média simples igual ao banco (Σ progress / n tarefas ativas) ──
+// Mesma fórmula da API: allTasks.reduce((sum, t) => sum + t.progress, 0) / allTasks.length
+function calcExecuted(leaves: Task[], _totalW: number, pointISO: string): number {
+  // Considera apenas tarefas que já iniciaram neste ponto
+  const active = leaves.filter(t => t.plannedStart && t.plannedStart <= pointISO)
+  if (!active.length) return 0
+  const sum = active.reduce((s, t) => {
     const endRef = t.actualEnd || (t.status === 'COMPLETED' ? t.plannedEnd : null)
-    if (endRef && endRef <= pointISO) execDone += w
-    else if (t.status === 'IN_PROGRESS' && t.plannedStart && t.plannedStart <= pointISO)
-      execDone += w * (t.progress / 100)
-  })
-  return totalW ? Math.round(execDone / totalW * 100) : 0
+    if (endRef && endRef <= pointISO) return s + 100  // concluída = 100%
+    return s + t.progress
+  }, 0)
+  return Math.round(sum / active.length)
 }
 // ── Gráfico principal: granularidade SEMANAL ─────────────────────────────────
 function buildWeeklyData(tasks: Task[], lang: string, projectStart: string, projectEnd: string) {
