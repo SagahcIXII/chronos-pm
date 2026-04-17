@@ -113,6 +113,8 @@ function buildWeeklyData(tasks: Task[], lang: string, projectStart: string, proj
     // Insere o ponto de referência antes do primeiro ponto futuro
     if (!todayInserted && pointISO > refISO) {
       const snapToday = snapshots.find(s => s.date === refISO)
+        ?? snapshots.filter(s => s.date <= refISO).sort((a,b) => b.date.localeCompare(a.date))[0]
+        ?? null
       rows.push({
         period: todayLabel,
         date: refISO,
@@ -130,8 +132,14 @@ function buildWeeklyData(tasks: Task[], lang: string, projectStart: string, proj
     const isToday = pointISO === refISO
     if (isToday) todayInserted = true
 
-    // Usa snapshot manual se existir para esta data (ou a mais próxima anterior)
-    const snap = snapshots.find(s => s.date === pointISO)
+    // Busca snapshot: exato na data OU o mais recente ANTES deste ponto (dentro da semana)
+    const weekStart = new Date(pointDate)
+    weekStart.setDate(weekStart.getDate() - 7)
+    const weekStartISO = weekStart.toISOString().slice(0, 10)
+    const snap = snapshots
+      .filter(s => s.date <= pointISO && s.date > weekStartISO)
+      .sort((a, b) => b.date.localeCompare(a.date))[0] ?? null
+
     const execValue = snap
       ? snap.executed
       : (!isFuture ? calcExecuted(leaves, totalW, pointISO) : null)
