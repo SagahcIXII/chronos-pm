@@ -14,7 +14,15 @@ interface Task {
   progress: number; status: string; weight: number
 }
 
-const todayISO = new Date().toISOString().slice(0, 10)
+// Data local correta — evita problema de UTC vs fuso horário
+function getLocalDateISO(): string {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+const todayISO = getLocalDateISO()
 const todayDate = new Date(todayISO)
 
 function weekLabel(date: Date, lang: string): string {
@@ -79,7 +87,7 @@ function calcExecuted(leaves: Task[], _totalW: number, pointISO: string): number
   return Math.round(sum / active.length)
 }
 // ── Gráfico principal: granularidade SEMANAL ─────────────────────────────────
-function buildWeeklyData(tasks: Task[], lang: string, projectStart: string, projectEnd: string) {
+function buildWeeklyData(tasks: Task[], lang: string, projectStart: string, projectEnd: string, refISO: string = todayISO) {
   const leaves = tasks.filter(t => !t.isGroup)
   if (!leaves.length) return { rows: [], todayLabel: '' }
 
@@ -99,28 +107,29 @@ function buildWeeklyData(tasks: Task[], lang: string, projectStart: string, proj
   const cur = new Date(start)
 
   // Label do ponto de hoje — usado no array e na ReferenceLine
-  const todayLabel = weekLabel(todayDate, lang)
+  const refDate = new Date(refISO)
+  const todayLabel = weekLabel(refDate, lang)
   let todayInserted = false
 
   while (cur <= end) {
     const pointDate = new Date(cur)
     const pointISO = pointDate.toISOString().slice(0, 10)
 
-    // Insere o ponto de hoje antes do primeiro ponto futuro
-    if (!todayInserted && pointISO > todayISO) {
+    // Insere o ponto de referência antes do primeiro ponto futuro
+    if (!todayInserted && pointISO > refISO) {
       rows.push({
         period: todayLabel,
-        date: todayISO,
-        plannedCumulative: calcPlanned(leaves, totalW, todayDate, projectStart, projectEnd),
-        executedCumulative: calcExecuted(leaves, totalW, todayISO),
+        date: refISO,
+        plannedCumulative: calcPlanned(leaves, totalW, refDate, projectStart, projectEnd),
+        executedCumulative: calcExecuted(leaves, totalW, refISO),
         isToday: true,
         isFuture: false,
       })
       todayInserted = true
     }
 
-    const isFuture = pointDate > todayDate
-    const isToday = pointISO === todayISO
+    const isFuture = pointDate > refDate
+    const isToday = pointISO === refISO
     if (isToday) todayInserted = true
 
     rows.push({
@@ -138,9 +147,9 @@ function buildWeeklyData(tasks: Task[], lang: string, projectStart: string, proj
   if (!todayInserted) {
     rows.push({
       period: todayLabel,
-      date: todayISO,
-      plannedCumulative: calcPlanned(leaves, totalW, todayDate, projectStart, projectEnd),
-      executedCumulative: calcExecuted(leaves, totalW, todayISO),
+      date: refISO,
+      plannedCumulative: calcPlanned(leaves, totalW, refDate, projectStart, projectEnd),
+      executedCumulative: calcExecuted(leaves, totalW, refISO),
       isToday: true,
       isFuture: false,
     })
@@ -159,7 +168,7 @@ function buildWeeklyData(tasks: Task[], lang: string, projectStart: string, proj
   return { rows, todayLabel }
 }
 // ── Tabela e barras: granularidade MENSAL ────────────────────────────────────
-function buildMonthlyData(tasks: Task[], lang: string, projectStart: string, projectEnd: string) {
+function buildMonthlyData(tasks: Task[], lang: string, projectStart: string, projectEnd: string, refISO: string = todayISO) {
   const leaves = tasks.filter(t => !t.isGroup)
   if (!leaves.length) return []
 
@@ -180,13 +189,14 @@ function buildMonthlyData(tasks: Task[], lang: string, projectStart: string, pro
     const endOfMonth = new Date(cur.getFullYear(), cur.getMonth() + 1, 0)
     const startOfMonth = new Date(cur.getFullYear(), cur.getMonth(), 1)
     const label = monthLabel(new Date(cur), lang)
-    const isFuture = startOfMonth > todayDate
-    const isCurrent = !isFuture && endOfMonth >= todayDate
-    const refDate = isCurrent ? todayDate : endOfMonth
-    const refISO = refDate.toISOString().slice(0, 10)
+    const refDateObj = new Date(refISO)
+    const isFuture = startOfMonth > refDateObj
+    const isCurrent = !isFuture && endOfMonth >= refDateObj
+    const refDate = isCurrent ? refDateObj : endOfMonth
+    const refDateStr = refDate.toISOString().slice(0, 10)
 
     const plannedCumulative = calcPlanned(leaves, totalW, refDate, projectStart, projectEnd)
-    const executedCumulative = !isFuture ? calcExecuted(leaves, totalW, refISO) : null
+    const executedCumulative = !isFuture ? calcExecuted(leaves, totalW, refDateStr) : null
 
     const prevEnd = new Date(cur); prevEnd.setDate(0)
     const prevISO = prevEnd.toISOString().slice(0, 10)
@@ -239,6 +249,8 @@ export default function CurveSPage() {
 
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
+  // Data de referência configurável — padrão = data local de hoje
+  const [refDateISO, setRefDateISO] = useState<string>(todayISO)
 
   const load = useCallback(async () => {
     if (!activeProject?.id) return
@@ -254,8 +266,8 @@ export default function CurveSPage() {
 
   const pStart = (activeProject as any).startDate?.slice(0,10) ?? ''
   const pEnd = (activeProject as any).endDate?.slice(0,10) ?? ''
-  const { rows: weeklyData, todayLabel } = buildWeeklyData(tasks, lang, pStart, pEnd)
-  const monthlyData = buildMonthlyData(tasks, lang, pStart, pEnd)
+  const { rows: weeklyData, todayLabel } = buildWeeklyData(tasks, lang, pStart, pEnd, refDateISO)
+  const monthlyData = buildMonthlyData(tasks, lang, pStart, pEnd, refDateISO)
 
   const todayPoint = weeklyData.find(r => r.isToday)
   const execVal = todayPoint?.executedCumulative ?? 0
@@ -288,8 +300,33 @@ export default function CurveSPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div>
-        <h1 style={{ fontFamily: 'Syne,sans-serif', fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>{c.title}</h1>
-        <p style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>{c.subtitle}</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <h1 style={{ fontFamily: 'Syne,sans-serif', fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>{c.title}</h1>
+            <p style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>{c.subtitle}</p>
+          </div>
+          {/* Seletor de data de referência */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>
+              📅 {lang === 'pt' ? 'Data de referência' : 'Reference date'}
+            </span>
+            <input
+              type="date"
+              value={refDateISO}
+              max={todayISO}
+              onChange={e => setRefDateISO(e.target.value || todayISO)}
+              style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', background: 'transparent', border: 'none', outline: 'none', cursor: 'pointer' }}
+            />
+            {refDateISO !== todayISO && (
+              <button
+                onClick={() => setRefDateISO(todayISO)}
+                style={{ fontSize: 11, color: '#60a5fa', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0, whiteSpace: 'nowrap' }}
+              >
+                {lang === 'pt' ? 'Hoje' : 'Today'}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {trend.label === (lang === 'pt' ? 'Atrasado' : 'Delayed') && (
@@ -351,7 +388,7 @@ export default function CurveSPage() {
                     stroke="var(--red)"
                     strokeWidth={2}
                     strokeDasharray="5,4"
-                    label={{ value: lang === 'pt' ? `Hoje ${todayISO.slice(8, 10)}/${todayISO.slice(5, 7)}` : `Today ${todayISO.slice(5, 7)}/${todayISO.slice(8, 10)}`, fill: 'var(--red)', fontSize: 10, position: 'insideTopRight' }}
+                    label={{ value: lang === 'pt' ? `${refDateISO === todayISO ? 'Hoje' : 'Ref.'} ${refDateISO.slice(8,10)}/${refDateISO.slice(5,7)}` : `${refDateISO === todayISO ? 'Today' : 'Ref.'} ${refDateISO.slice(5,7)}/${refDateISO.slice(8,10)}`, fill: 'var(--red)', fontSize: 10, position: 'insideTopRight' }}
                   />
                   <Area type="monotone" dataKey="plannedCumulative" name={lang === 'pt' ? 'Planejado' : 'Planned'} stroke="#3b82f6" strokeWidth={2.5} fill="url(#gP)" dot={false} connectNulls />
                   <Area type="monotone" dataKey="executedCumulative" name={lang === 'pt' ? 'Executado' : 'Executed'} stroke="#22c55e" strokeWidth={2.5} fill="url(#gE)" dot={false} connectNulls={false} />
