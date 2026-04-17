@@ -35,29 +35,24 @@ function monthLabel(date: Date, lang: string): string {
   return date.toLocaleDateString(lang === 'pt' ? 'pt-BR' : 'en-US', { month: 'short', year: '2-digit' })
 }
 
-function calcTrend(tasks: Task[], lang: string): { label: string; color: string; detail: string } {
-  const leaves = tasks.filter(t => !t.isGroup && t.status !== 'COMPLETED' && t.status !== 'NOT_STARTED')
-  if (!leaves.length) return { label: lang === 'pt' ? 'No Prazo' : 'On Track', color: '#60a5fa', detail: '' }
-  let atRisk = 0, ahead = 0
-  leaves.forEach(t => {
-    if (!t.plannedStart || !t.plannedEnd) return
-    const totalDays = (new Date(t.plannedEnd).getTime() - new Date(t.plannedStart).getTime()) / 86400000
-    if (totalDays <= 0) return
-    const elapsed = Math.max(0, (todayDate.getTime() - new Date(t.plannedStart).getTime()) / 86400000)
-    const timeProgress = Math.min(100, (elapsed / totalDays) * 100)
-    if (timeProgress > 10 && t.progress < timeProgress - 15) atRisk++
-    else if (timeProgress > 10 && t.progress > timeProgress + 15) ahead++
-  })
-  const total = leaves.length
-  if (atRisk / total >= 0.3) return {
-    label: lang === 'pt' ? 'Atrasado' : 'Delayed', color: '#f87171',
-    detail: lang === 'pt' ? `${atRisk} de ${total} tarefas em risco` : `${atRisk} of ${total} tasks at risk`
+// Tendência baseada no desvio global — consistente com os KPIs da Curva S
+// Desvio > +5% → Adiantado | entre -5% e +5% → No Prazo | < -5% → Atrasado
+function calcTrend(deviation: number, lang: string): { label: string; color: string; detail: string } {
+  if (deviation > 5) return {
+    label: lang === 'pt' ? 'Adiantado' : 'Ahead',
+    color: '#4ade80',
+    detail: lang === 'pt' ? `${deviation}pp acima do planejado` : `${deviation}pp ahead of plan`
   }
-  if (ahead / total >= 0.5 && atRisk === 0) return {
-    label: lang === 'pt' ? 'Adiantado' : 'Ahead', color: '#4ade80',
-    detail: lang === 'pt' ? `${ahead} de ${total} tarefas adiantadas` : `${ahead} of ${total} tasks ahead`
+  if (deviation < -5) return {
+    label: lang === 'pt' ? 'Atrasado' : 'Delayed',
+    color: '#f87171',
+    detail: lang === 'pt' ? `${Math.abs(deviation)}pp abaixo do planejado` : `${Math.abs(deviation)}pp behind plan`
   }
-  return { label: lang === 'pt' ? 'No Prazo' : 'On Track', color: '#60a5fa', detail: '' }
+  return {
+    label: lang === 'pt' ? 'No Prazo' : 'On Track',
+    color: '#60a5fa',
+    detail: lang === 'pt' ? `Desvio de ${deviation >= 0 ? '+' : ''}${deviation}pp` : `${deviation >= 0 ? '+' : ''}${deviation}pp deviation`
+  }
 }
 
 // ── Planejado: linha reta proporcional ao prazo total do projeto ─────────────
@@ -87,7 +82,7 @@ function calcExecuted(leaves: Task[], _totalW: number, pointISO: string): number
   return Math.round(sum / active.length)
 }
 // ── Gráfico principal: granularidade SEMANAL ─────────────────────────────────
-function buildWeeklyData(tasks: Task[], lang: string, projectStart: string, projectEnd: string, refISO: string = todayISO) {
+function buildWeeklyData(tasks: Task[], lang: string, projectStart: string, projectEnd: string, refISO: string = todayISO, snapshots: {date:string;executed:number;note:string}[] = []) {
   const leaves = tasks.filter(t => !t.isGroup)
   if (!leaves.length) return { rows: [], todayLabel: '' }
 
@@ -117,13 +112,16 @@ function buildWeeklyData(tasks: Task[], lang: string, projectStart: string, proj
 
     // Insere o ponto de referência antes do primeiro ponto futuro
     if (!todayInserted && pointISO > refISO) {
+      const snapToday = snapshots.find(s => s.date === refISO)
       rows.push({
         period: todayLabel,
         date: refISO,
         plannedCumulative: calcPlanned(leaves, totalW, refDate, projectStart, projectEnd),
-        executedCumulative: calcExecuted(leaves, totalW, refISO),
+        executedCumulative: snapToday ? snapToday.executed : calcExecuted(leaves, totalW, refISO),
         isToday: true,
         isFuture: false,
+        isSnapshot: !!snapToday,
+        snapNote: snapToday?.note ?? '',
       })
       todayInserted = true
     }
@@ -132,13 +130,21 @@ function buildWeeklyData(tasks: Task[], lang: string, projectStart: string, proj
     const isToday = pointISO === refISO
     if (isToday) todayInserted = true
 
+    // Usa snapshot manual se existir para esta data (ou a mais próxima anterior)
+    const snap = snapshots.find(s => s.date === pointISO)
+    const execValue = snap
+      ? snap.executed
+      : (!isFuture ? calcExecuted(leaves, totalW, pointISO) : null)
+
     rows.push({
       period: isToday ? todayLabel : weekLabel(pointDate, lang),
       date: pointISO,
       plannedCumulative: calcPlanned(leaves, totalW, pointDate, projectStart, projectEnd),
-      executedCumulative: !isFuture ? calcExecuted(leaves, totalW, pointISO) : null,
+      executedCumulative: execValue,
       isToday,
       isFuture,
+      isSnapshot: !!snap,
+      snapNote: snap?.note ?? '',
     })
     cur.setDate(cur.getDate() + 7)
   }
@@ -251,6 +257,13 @@ export default function CurveSPage() {
   const [loading, setLoading] = useState(true)
   // Data de referência configurável — padrão = data local de hoje
   const [refDateISO, setRefDateISO] = useState<string>(todayISO)
+  // Snapshots históricos — persistidos no banco Neon
+  const [snapshots, setSnapshots] = useState<{id:string;date:string;executed:number;note:string}[]>([])
+  const [snapDate, setSnapDate] = useState('')
+  const [snapExec, setSnapExec] = useState('')
+  const [snapNote, setSnapNote] = useState('')
+  const [showSnapPanel, setShowSnapPanel] = useState(false)
+  const [snapSaving, setSnapSaving] = useState(false)
 
   const load = useCallback(async () => {
     if (!activeProject?.id) return
@@ -264,9 +277,45 @@ export default function CurveSPage() {
 
   useEffect(() => { load() }, [load])
 
+  // Carrega snapshots do banco ao trocar de projeto
+  useEffect(() => {
+    if (!activeProject?.id) return
+    fetch(`/api/snapshots?projectId=${activeProject.id}`)
+      .then(r => r.json())
+      .then(data => setSnapshots(Array.isArray(data) ? data : []))
+      .catch(() => setSnapshots([]))
+  }, [activeProject?.id])
+
+  const addSnapshot = async () => {
+    if (!snapDate || !snapExec || !activeProject?.id) return
+    const val = Math.min(100, Math.max(0, parseInt(snapExec)))
+    if (isNaN(val)) return
+    setSnapSaving(true)
+    try {
+      const res = await fetch('/api/snapshots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: activeProject.id, date: snapDate, executed: val, note: snapNote.trim() }),
+      })
+      const saved = await res.json()
+      if (res.ok) {
+        setSnapshots(prev => {
+          const filtered = prev.filter(s => s.date !== snapDate)
+          return [...filtered, saved].sort((a, b) => a.date.localeCompare(b.date))
+        })
+        setSnapDate(''); setSnapExec(''); setSnapNote('')
+      }
+    } finally { setSnapSaving(false) }
+  }
+
+  const removeSnapshot = async (id: string) => {
+    await fetch(`/api/snapshots?id=${id}`, { method: 'DELETE' })
+    setSnapshots(prev => prev.filter(s => s.id !== id))
+  }
+
   const pStart = (activeProject as any).startDate?.slice(0,10) ?? ''
   const pEnd = (activeProject as any).endDate?.slice(0,10) ?? ''
-  const { rows: weeklyData, todayLabel } = buildWeeklyData(tasks, lang, pStart, pEnd, refDateISO)
+  const { rows: weeklyData, todayLabel } = buildWeeklyData(tasks, lang, pStart, pEnd, refDateISO, snapshots)
   const monthlyData = buildMonthlyData(tasks, lang, pStart, pEnd, refDateISO)
 
   const todayPoint = weeklyData.find(r => r.isToday)
@@ -274,7 +323,7 @@ export default function CurveSPage() {
   const planVal = todayPoint?.plannedCumulative ?? 0
   const deviation = execVal - planVal
 
-  const trend = calcTrend(tasks, lang)
+  const trend = calcTrend(deviation, lang)
 
   const getStatus = (d: any) => {
     if (d.isFuture) return c.statusFuturo
@@ -329,9 +378,18 @@ export default function CurveSPage() {
         </div>
       </div>
 
-      {trend.label === (lang === 'pt' ? 'Atrasado' : 'Delayed') && (
+      {deviation < -5 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 8, fontSize: 13, color: '#fbbf24' }}>
-          ⚠ {lang === 'pt' ? `Projeto com tendência de atraso — ${trend.detail}.` : `Project at risk of delay — ${trend.detail}.`}
+          ⚠ {lang === 'pt'
+            ? `Projeto com desvio de ${Math.abs(deviation)}pp abaixo do planejado.`
+            : `Project is ${Math.abs(deviation)}pp behind plan.`}
+        </div>
+      )}
+      {deviation > 5 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 8, fontSize: 13, color: '#4ade80' }}>
+          ✅ {lang === 'pt'
+            ? `Projeto adiantado — ${deviation}pp acima do planejado.`
+            : `Project ahead — ${deviation}pp above plan.`}
         </div>
       )}
 
@@ -356,6 +414,77 @@ export default function CurveSPage() {
                   : null}
               </div>
             ))}
+          </div>
+
+          {/* Painel de Histórico Manual */}
+          <div className="card">
+            <div className="card-header" style={{cursor:'pointer'}} onClick={() => setShowSnapPanel(p => !p)}>
+              <h2 className="card-title">📌 {lang === 'pt' ? 'Histórico Manual de Progresso' : 'Manual Progress History'}</h2>
+              <span style={{fontSize:12,color:'var(--text3)',marginLeft:8}}>
+                {snapshots.length > 0 ? `${snapshots.length} ${lang==='pt'?'ponto(s) registrado(s)':'point(s) recorded'}` : lang==='pt'?'Nenhum ponto registrado':'No points recorded'}
+                {' '}— {showSnapPanel ? '▲' : '▼'}
+              </span>
+            </div>
+            {showSnapPanel && (
+              <div className="card-body" style={{display:'flex',flexDirection:'column',gap:12}}>
+                <p style={{fontSize:12,color:'var(--text3)'}}>
+                  {lang==='pt'
+                    ?'Registre o progresso real de semanas anteriores. Esses valores substituem o cálculo automático no gráfico, permitindo representar corretamente o histórico.'
+                    :'Record actual progress from previous weeks. These values override automatic calculation in the chart, correctly representing history.'}
+                </p>
+                {/* Linha de input */}
+                <div style={{display:'grid',gridTemplateColumns:'140px 100px 1fr auto',gap:8,alignItems:'end'}}>
+                  <div>
+                    <label style={{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',display:'block',marginBottom:4}}>
+                      {lang==='pt'?'Data':'Date'}
+                    </label>
+                    <input type="date" className="form-control" value={snapDate} max={refDateISO}
+                      onChange={e=>setSnapDate(e.target.value)} style={{fontSize:13}}/>
+                  </div>
+                  <div>
+                    <label style={{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',display:'block',marginBottom:4}}>
+                      {lang==='pt'?'Executado %':'Executed %'}
+                    </label>
+                    <input type="number" className="form-control" min={0} max={100} placeholder="ex: 34"
+                      value={snapExec} onChange={e=>setSnapExec(e.target.value)} style={{fontSize:13}}/>
+                  </div>
+                  <div>
+                    <label style={{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',display:'block',marginBottom:4}}>
+                      {lang==='pt'?'Nota (opcional)':'Note (optional)'}
+                    </label>
+                    <input type="text" className="form-control" placeholder={lang==='pt'?'Ex: semana crítica, fora da meta...':'Ex: critical week, behind target...'}
+                      value={snapNote} onChange={e=>setSnapNote(e.target.value)} style={{fontSize:13}}/>
+                  </div>
+                  <button className="btn btn-primary" onClick={addSnapshot} disabled={!snapDate||!snapExec}
+                    style={{padding:'8px 16px',fontSize:13,height:38,alignSelf:'end'}}>
+                    {snapSaving ? '⏳' : '+ '}{!snapSaving && (lang==='pt'?'Adicionar':'Add')}
+                  </button>
+                </div>
+                {/* Lista de snapshots */}
+                {snapshots.length > 0 && (
+                  <div style={{borderTop:'1px solid var(--border)',paddingTop:12}}>
+                    <div style={{display:'grid',gridTemplateColumns:'120px 90px 1fr auto',gap:'0 12px',padding:'4px 0',borderBottom:'1px solid var(--border)',marginBottom:4}}>
+                      {[lang==='pt'?'Data':'Date', lang==='pt'?'Executado':'Executed', lang==='pt'?'Nota':'Note',''].map((h,i)=>(
+                        <span key={i} style={{fontSize:10,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px'}}>{h}</span>
+                      ))}
+                    </div>
+                    {snapshots.map(s => (
+                      <div key={s.date} style={{display:'grid',gridTemplateColumns:'120px 90px 1fr auto',gap:'0 12px',padding:'6px 0',borderBottom:'1px solid var(--border)',alignItems:'center'}}>
+                        <span style={{fontSize:13,color:'var(--text)',fontWeight:600}}>
+                          📌 {s.date.slice(8,10)}/{s.date.slice(5,7)}/{s.date.slice(0,4)}
+                        </span>
+                        <span style={{fontSize:13,color:'#4ade80',fontWeight:700}}>{s.executed}%</span>
+                        <span style={{fontSize:12,color:'var(--text3)'}}>{s.note || '—'}</span>
+                        <button onClick={()=>removeSnapshot(s.id)}
+                          style={{fontSize:12,color:'#f87171',background:'none',border:'none',cursor:'pointer',padding:'2px 6px'}}>
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="card">
