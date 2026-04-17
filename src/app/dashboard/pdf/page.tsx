@@ -11,7 +11,15 @@ interface Task {
   progress: number; status: string; priority: string
 }
 
-const todayISO = new Date().toISOString().slice(0, 10)
+// Data local correta — evita problema UTC vs fuso horário
+function getLocalDateISO(): string {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+const todayISO = getLocalDateISO()
 const todayDate = new Date(todayISO)
 
 const fmtDate = (s?: string | null, lang = 'pt') => {
@@ -49,7 +57,7 @@ function calcExecutedSimple(leaves: Task[], pointISO: string): number {
 }
 
 // ── Curva S mensal para o PDF ─────────────────────────────────────────────────
-function buildCurve(tasks: Task[], projectStart: string, projectEnd: string, lang: string) {
+function buildCurve(tasks: Task[], projectStart: string, projectEnd: string, lang: string, refISO: string = todayISO) {
   const leaves = tasks.filter(t => !t.isGroup)
   if (!leaves.length || !projectStart || !projectEnd) return []
 
@@ -65,13 +73,14 @@ function buildCurve(tasks: Task[], projectStart: string, projectEnd: string, lan
     const endStr = endOfMonth.toISOString().slice(0, 10)
     const label = cur.toLocaleDateString(lang === 'pt' ? 'pt-BR' : 'en-US', { month: 'short', year: '2-digit' })
 
-    const isFuture = new Date(cur.getFullYear(), cur.getMonth(), 1) > todayDate
-    const isCurrent = !isFuture && endOfMonth >= todayDate
-    const refDate = isCurrent ? todayDate : endOfMonth
-    const refISO = refDate.toISOString().slice(0, 10)
+    const refDateObj = new Date(refISO)
+    const isFuture = new Date(cur.getFullYear(), cur.getMonth(), 1) > refDateObj
+    const isCurrent = !isFuture && endOfMonth >= refDateObj
+    const refDate = isCurrent ? refDateObj : endOfMonth
+    const refDateStr = refDate.toISOString().slice(0, 10)
 
     const plannedCumulative = calcPlannedLinear(refDate, projectStart, projectEnd)
-    const executedCumulative = !isFuture ? calcExecutedSimple(leaves, refISO) : null
+    const executedCumulative = !isFuture ? calcExecutedSimple(leaves, refDateStr) : null
     const deviation = !isFuture && executedCumulative !== null ? executedCumulative - plannedCumulative : null
 
     rows.push({ period: label, plannedCumulative, executedCumulative, deviation, isCurrent, isFuture })
@@ -96,6 +105,8 @@ export default function PDFPage() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
+  // Data de referência configurável — padrão = data local de hoje
+  const [refDateISO, setRefDateISO] = useState<string>(todayISO)
   const [emailTo, setEmailTo] = useState('')
   const [emailSubject, setEmailSubject] = useState('')
   const [senderName, setSenderName] = useState('')
@@ -144,7 +155,7 @@ export default function PDFPage() {
     : ap.progress ?? 0
 
   // Curva S com metodologia linear
-  const curveData = buildCurve(tasks, pStart, pEnd, lang)
+  const curveData = buildCurve(tasks, pStart, pEnd, lang, refDateISO)
   const currentRow = curveData.find(d => d.isCurrent)
   const lastExecRow = currentRow ?? [...curveData].reverse().find((d:any) => d.executedCumulative !== null)
   const execVal = lastExecRow?.executedCumulative ?? 0
@@ -230,7 +241,7 @@ export default function PDFPage() {
     const execPts = execDataPts.map((d:any)=>`${px(curveData.indexOf(d))},${py(d.executedCumulative)}`).join(' ')
 
     // Linha "Hoje": último ponto com executado
-    const todayI = curveData.findIndex((d:any)=>d.isCurrent)
+    const todayI = curveData.findIndex((d:any)=>d.isCurrent)  // mês atual conforme refDateISO
     const todayX = todayI>=0 ? px(todayI) : px(Math.floor(curveData.length/2))
 
     const planArea = `${padL},${py(0)} ${planPts} ${px(curveData.length-1)},${py(0)}`
@@ -526,8 +537,33 @@ export default function PDFPage() {
   return (
     <div style={{maxWidth:760,display:'flex',flexDirection:'column',gap:20}}>
       <div>
-        <h1 style={{fontFamily:'Syne,sans-serif',fontSize:22,fontWeight:800,color:'var(--text)'}}>{pt?'Relatório em PDF':'PDF Report'}</h1>
-        <p style={{fontSize:13,color:'var(--text3)',marginTop:4}}>{pt?'Relatório executivo — 4 páginas · Paisagem (A4)':'Executive report — 4 pages · Landscape (A4)'}</p>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+          <div>
+            <h1 style={{fontFamily:'Syne,sans-serif',fontSize:22,fontWeight:800,color:'var(--text)'}}>{pt?'Relatório em PDF':'PDF Report'}</h1>
+            <p style={{fontSize:13,color:'var(--text3)',marginTop:4}}>{pt?'Relatório executivo — 4 páginas · Paisagem (A4)':'Executive report — 4 pages · Landscape (A4)'}</p>
+          </div>
+          {/* Seletor de data de referência */}
+          <div style={{display:'flex',alignItems:'center',gap:10,background:'var(--surface2)',border:'1px solid var(--border)',borderRadius:8,padding:'8px 14px'}}>
+            <span style={{fontSize:12,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',whiteSpace:'nowrap'}}>
+              📅 {pt?'Data de referência':'Reference date'}
+            </span>
+            <input
+              type="date"
+              value={refDateISO}
+              max={todayISO}
+              onChange={e => setRefDateISO(e.target.value || todayISO)}
+              style={{fontSize:13,fontWeight:600,color:'var(--text)',background:'transparent',border:'none',outline:'none',cursor:'pointer'}}
+            />
+            {refDateISO !== todayISO && (
+              <button
+                onClick={() => setRefDateISO(todayISO)}
+                style={{fontSize:11,color:'#60a5fa',background:'none',border:'none',cursor:'pointer',textDecoration:'underline',padding:0,whiteSpace:'nowrap'}}
+              >
+                {pt?'Hoje':'Today'}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
       <div className="alert alert-info">ℹ️ &nbsp;{pt?'Use o Chrome. Botão → nova aba → 🖨 Salvar como PDF · Paisagem · ✅ Gráficos em segundo plano':'Use Chrome. Button → new tab → 🖨 Save as PDF · Landscape · ✅ Background graphics'}</div>
 
