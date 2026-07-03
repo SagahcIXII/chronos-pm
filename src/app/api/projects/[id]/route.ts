@@ -51,7 +51,7 @@ const UpdateProjectSchema = z.object({
 export async function PUT(req: NextRequest, { params }: Params) {
   try {
     const user = await requireUser()
-    await assertProjectAccess(params.id, user, { write: true })
+    const existing = await assertProjectAccess(params.id, user, { write: true })
 
     const parsed = UpdateProjectSchema.safeParse(await req.json())
     if (!parsed.success) {
@@ -59,9 +59,17 @@ export async function PUT(req: NextRequest, { params }: Params) {
     }
     const d = parsed.data
 
-    // Apenas ADMIN pode (re)atribuir o cliente de um projeto.
-    if (d.clientId !== undefined && user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Apenas o administrador pode alterar o cliente' }, { status: 403 })
+    // Só valida/autoriza o clientId quando ele REALMENTE muda — assim um
+    // MANAGER pode editar os demais campos sem esbarrar nesta regra.
+    const clientChanged = d.clientId !== undefined && (d.clientId || null) !== (existing.clientId || null)
+    if (clientChanged) {
+      if (user.role !== 'ADMIN') {
+        return NextResponse.json({ error: 'Apenas o administrador pode alterar o cliente' }, { status: 403 })
+      }
+      if (d.clientId) {
+        const client = await prisma.user.findUnique({ where: { id: d.clientId } })
+        if (!client) return NextResponse.json({ error: 'Cliente informado não existe' }, { status: 400 })
+      }
     }
 
     const project = await prisma.project.update({
@@ -75,7 +83,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
         ...(d.status && { status: d.status }),
         ...(d.progress !== undefined && { progress: d.progress }),
         ...(d.observations !== undefined && { observations: d.observations }),
-        ...(d.clientId !== undefined && { clientId: d.clientId }),
+        ...(d.clientId !== undefined && { clientId: d.clientId || null }),
       },
     })
     return NextResponse.json({ data: project })

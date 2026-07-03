@@ -100,6 +100,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </Link>
             )
           })}
+          {(session?.user as any)?.role === 'ADMIN' && (
+            <button onClick={()=>router.push('/users')}
+              style={{display:'flex',alignItems:'center',gap:10,padding:'9px 16px',cursor:'pointer',width:'100%',
+                color:'var(--text2)',background:'none',border:'none',borderLeft:'2px solid transparent',
+                fontSize:13.5,textAlign:'left',fontFamily:'inherit'}}>
+              👥 {lang==='pt'?'Usuários':'Users'}
+            </button>
+          )}
         </nav>
 
         {/* User */}

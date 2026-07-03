@@ -11,7 +11,11 @@ interface Project {
   status: string; progress: number; observations?: string
   totalTasks?: number; completedTasks?: number; inProgressTasks?: number
   computedProgress?: number
+  clientId?: string | null
+  client?: { id: string; name: string; email: string } | null
 }
+
+interface ClientOption { id: string; name: string; email: string }
 
 const STATUS_COLORS: Record<string,string> = {
   IN_PROGRESS:'#3b82f6', COMPLETED:'#22c55e', NOT_STARTED:'#5a6a84', ON_HOLD:'#f59e0b'
@@ -46,9 +50,19 @@ function ProjectModal({ project, onClose, onSave, lang }: {
     endDate: project?.endDate ? project.endDate.slice(0,10) : '',
     status: project?.status ?? 'IN_PROGRESS',
     observations: project?.observations ?? '',
+    clientId: project?.clientId ?? '',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [clients, setClients] = useState<ClientOption[]>([])
+
+  // Carrega os usuários-cliente para o seletor.
+  useEffect(() => {
+    fetch('/api/users?role=CLIENT')
+      .then(r => r.ok ? r.json() : { data: [] })
+      .then(j => setClients(j.data ?? []))
+      .catch(() => setClients([]))
+  }, [])
 
   const statusOptions = lang === 'pt'
     ? [['IN_PROGRESS','Em Andamento'],['NOT_STARTED','Não Iniciado'],['COMPLETED','Concluído'],['ON_HOLD','Pausado']]
@@ -65,7 +79,7 @@ function ProjectModal({ project, onClose, onSave, lang }: {
       const method = isEdit ? 'PUT' : 'POST'
       const res = await fetch(url, {
         method, headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(form)
+        body: JSON.stringify({ ...form, clientId: form.clientId || null })
       })
       if (!res.ok) {
         const d = await res.json()
@@ -135,6 +149,19 @@ function ProjectModal({ project, onClose, onSave, lang }: {
               <input type="date" style={INPUT} value={form.endDate}
                 onChange={e=>setForm(p=>({...p,endDate:e.target.value}))}/>
             </div>
+          </div>
+          <div>
+            <label style={LABEL}>{lang==='pt'?'Cliente (quem pode visualizar)':'Client (who can view)'}</label>
+            <select style={{...INPUT,cursor:'pointer'}} value={form.clientId}
+              onChange={e=>setForm(p=>({...p,clientId:e.target.value}))}>
+              <option value="">{lang==='pt'?'— Nenhum (projeto interno) —':'— None (internal project) —'}</option>
+              {clients.map(c=><option key={c.id} value={c.id}>{c.name} ({c.email})</option>)}
+            </select>
+            <p style={{fontSize:11,color:'var(--text3)',marginTop:5}}>
+              {lang==='pt'
+                ? 'O cliente selecionado verá este projeto (somente leitura). Deixe em branco para manter interno.'
+                : 'The selected client will see this project (read-only). Leave blank to keep it internal.'}
+            </p>
           </div>
           <div>
             <label style={LABEL}>{lang==='pt'?'Observações':'Observations'}</label>
@@ -269,6 +296,12 @@ export default function ProjectsPage() {
           <span style={{fontSize:13,color:'var(--text3)'}}>BD7D Solutions Engenharia</span>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:12}}>
+          {(session?.user as any)?.role === 'ADMIN' && (
+            <button onClick={()=>router.push('/users')}
+              style={{background:'var(--surface2)',border:'1px solid var(--border)',color:'var(--text2)',padding:'6px 14px',borderRadius:8,cursor:'pointer',fontSize:13}}>
+              {lang==='pt'?'👥 Usuários':'👥 Users'}
+            </button>
+          )}
           <LangSwitcher/>
           <span style={{width:1,height:20,background:'var(--border)'}}/>
           <span style={{fontSize:13,color:'var(--text2)'}}>{session?.user?.name}</span>
