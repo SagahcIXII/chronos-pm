@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import nodemailer from 'nodemailer'
+import { requireUser, accessErrorResponse } from '@/lib/access'
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -10,6 +11,14 @@ const transporter = nodemailer.createTransport({
 })
 
 export async function POST(req: NextRequest) {
+  // Exige login: impede uso da conta de e-mail da empresa como relay de spam.
+  try {
+    await requireUser()
+  } catch (e) {
+    const { error, status } = accessErrorResponse(e)
+    return NextResponse.json({ error }, { status })
+  }
+
   try {
     const body = await req.json()
     const { to, subject, projectCode, projectName, senderName, lang } = body

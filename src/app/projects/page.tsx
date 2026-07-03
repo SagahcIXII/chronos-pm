@@ -225,7 +225,7 @@ export default function ProjectsPage() {
     setActiveProject({
       id: p.id, code: p.code,
       name: p.name, nameEn: p.name,
-      client: '', manager: p.responsible,
+      client: '', manager: p.responsible, responsible: p.responsible,
       startDate: p.startDate.slice(0,10),
       endDate: p.endDate.slice(0,10),
       progress: p.computedProgress ?? p.progress,

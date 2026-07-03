@@ -1,20 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { z } from 'zod'
+import {
+  requireUser,
+  canEdit,
+  projectVisibilityWhere,
+  accessErrorResponse,
+} from '@/lib/access'
 
-export async function GET(req: NextRequest) {
+// GET /api/projects — lista apenas os projetos visíveis ao usuário.
+export async function GET(_req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const user = await requireUser()
 
     const projects = await prisma.project.findMany({
-      where: { archived: false },
+      where: { archived: false, ...projectVisibilityWhere(user) },
       include: {
         tasks: { where: { parentId: null } },
-        _count: { select: { tasks: true } }
+        client: { select: { id: true, name: true, email: true } },
+        _count: { select: { tasks: true } },
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
     })
 
     const result = projects.map(p => {
@@ -34,28 +40,51 @@ export async function GET(req: NextRequest) {
     })
 
     return NextResponse.json(result)
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+  } catch (e) {
+    const { error, status } = accessErrorResponse(e)
+    return NextResponse.json({ error }, { status })
   }
 }
 
+const CreateProjectSchema = z.object({
+  code: z.string().min(1).max(60),
+  name: z.string().min(2).max(200),
+  description: z.string().max(2000).optional().nullable(),
+  responsible: z.string().min(1).max(200),
+  startDate: z.string().min(1),
+  endDate: z.string().min(1),
+  status: z.string().optional(),
+  observations: z.string().max(2000).optional().nullable(),
+  // Cliente que poderá visualizar o projeto (opcional).
+  clientId: z.string().optional().nullable(),
+})
+
+// POST /api/projects — cria projeto (ADMIN/MANAGER).
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const body = await req.json()
-    const { code, name, description, responsible, startDate, endDate, status, observations } = body
-
-    if (!code || !name || !responsible || !startDate || !endDate) {
-      return NextResponse.json({ error: 'Campos obrigatórios ausentes' }, { status: 400 })
+    const user = await requireUser()
+    if (!canEdit(user)) {
+      return NextResponse.json({ error: 'Sem permissão para criar projetos' }, { status: 403 })
     }
 
-    const existing = await prisma.project.findUnique({ where: { code } })
-    if (existing) return NextResponse.json({ error: 'Código já existe' }, { status: 400 })
+    const parsed = CreateProjectSchema.safeParse(await req.json())
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Dados inválidos', details: parsed.error.errors },
+        { status: 422 }
+      )
+    }
+    const { code, name, description, responsible, startDate, endDate, status, observations, clientId } =
+      parsed.data
 
-    const user = await prisma.user.findUnique({ where: { email: session.user?.email! } })
-    if (!user) return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 })
+    const existing = await prisma.project.findUnique({ where: { code } })
+    if (existing) return NextResponse.json({ error: 'Código já existe' }, { status: 409 })
+
+    // Se informado, valida que o clientId é um usuário existente.
+    if (clientId) {
+      const client = await prisma.user.findUnique({ where: { id: clientId } })
+      if (!client) return NextResponse.json({ error: 'Cliente informado não existe' }, { status: 400 })
+    }
 
     const project = await prisma.project.create({
       data: {
@@ -64,16 +93,18 @@ export async function POST(req: NextRequest) {
         description: description || null,
         responsible,
         ownerId: user.id,
+        clientId: clientId || null,
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         status: status || 'IN_PROGRESS',
         progress: 0,
         observations: observations || null,
-      }
+      },
     })
 
     return NextResponse.json(project, { status: 201 })
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+  } catch (e) {
+    const { error, status } = accessErrorResponse(e)
+    return NextResponse.json({ error }, { status })
   }
 }

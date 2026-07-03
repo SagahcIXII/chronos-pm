@@ -1,44 +1,39 @@
-// src/app/api/projects/id/duplicate/route.ts
-// Em produção: src/app/api/projects/[id]/duplicate/route.ts
+// src/app/api/projects/[id]/duplicate/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser, assertProjectAccess, accessErrorResponse } from '@/lib/access'
 
 type Params = { params: { id: string } }
 
-// POST /api/projects/[id]/duplicate
-export async function POST(req: NextRequest, { params }: Params) {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-  if (session.user.role === 'VIEWER') return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
-
+// POST /api/projects/[id]/duplicate — duplica projeto e tarefas (ADMIN/MANAGER com acesso).
+export async function POST(_req: NextRequest, { params }: Params) {
   try {
+    const user = await requireUser()
+    await assertProjectAccess(params.id, user, { write: true })
+
     const original = await prisma.project.findUnique({
       where: { id: params.id },
       include: { tasks: true },
     })
     if (!original) return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
 
-    // Cria cópia do projeto
     const newProject = await prisma.project.create({
       data: {
         code: `${original.code}-COPIA-${Date.now().toString().slice(-4)}`,
         name: `${original.name} (Cópia)`,
         description: original.description ?? undefined,
         responsible: original.responsible,
-        ownerId: session.user.id,
+        ownerId: user.id,
+        clientId: original.clientId ?? undefined,
         startDate: original.startDate,
         endDate: original.endDate,
-        status: 'PLANNING',
+        status: 'NOT_STARTED',
         observations: original.observations ?? undefined,
       },
     })
 
-    // Mapeia IDs antigos → novos para preservar relações
+    // Mapeia IDs antigos → novos para preservar hierarquia pai/filho.
     const idMap: Record<string, string> = {}
-
-    // Cria tarefas sem dependências primeiro
     const sortedTasks = [...original.tasks].sort((a, b) => a.level - b.level || a.order - b.order)
 
     for (const task of sortedTasks) {
@@ -66,9 +61,26 @@ export async function POST(req: NextRequest, { params }: Params) {
       idMap[task.id] = newTask.id
     }
 
+    // Recria as dependências entre as novas tarefas.
+    const deps = await prisma.taskDependency.findMany({
+      where: { predecessorId: { in: original.tasks.map(t => t.id) } },
+    })
+    if (deps.length > 0) {
+      await prisma.taskDependency.createMany({
+        data: deps
+          .filter(d => idMap[d.predecessorId] && idMap[d.successorId])
+          .map(d => ({
+            predecessorId: idMap[d.predecessorId],
+            successorId: idMap[d.successorId],
+            type: d.type,
+            lag: d.lag,
+          })),
+      })
+    }
+
     return NextResponse.json({ data: newProject }, { status: 201 })
-  } catch (err) {
-    console.error(err)
-    return NextResponse.json({ error: 'Erro ao duplicar projeto' }, { status: 500 })
+  } catch (e) {
+    const { error, status } = accessErrorResponse(e)
+    return NextResponse.json({ error }, { status })
   }
 }

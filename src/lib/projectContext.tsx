@@ -1,5 +1,14 @@
 'use client'
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react'
+
+// ─────────────────────────────────────────────────────────────
+// Contexto de projeto conectado à API REAL (/api/projects).
+// A API já aplica o filtro de multi-tenancy no servidor, então o
+// cliente recebe SOMENTE os projetos que pode ver.
+//
+// A lista estática que existia aqui foi removida — era a causa de o
+// seletor mostrar projetos fixos independentemente do banco/usuário.
+// ─────────────────────────────────────────────────────────────
 
 export interface Project {
   id: string
@@ -8,6 +17,7 @@ export interface Project {
   nameEn: string
   client: string
   manager: string
+  responsible: string
   startDate: string
   endDate: string
   progress: number
@@ -25,122 +35,104 @@ export interface Project {
   color: string
 }
 
-export const PROJECTS: Project[] = [
-  {
-    id: 'bd7d-2025-001',
-    code: 'BD7D-2025-001',
-    name: 'Infraestrutura Industrial — Planta Norte',
-    nameEn: 'Industrial Infrastructure — North Plant',
-    client: 'Metalcon Indústria S.A.',
-    manager: 'Eng. Carlos Souza',
-    startDate: '2025-02-01',
-    endDate: '2025-09-30',
-    progress: 42,
-    status: 'IN_PROGRESS',
-    type: 'Engenharia Civil e Automação',
-    typeEn: 'Civil Engineering & Automation',
-    description: 'Implantação completa de infraestrutura industrial incluindo fundações, estrutura metálica, subestação elétrica e sistema de automação SDCD.',
-    descriptionEn: 'Full industrial infrastructure implementation including foundations, steel structure, electrical substation, and DCS automation system.',
-    totalTasks: 14,
-    completedTasks: 6,
-    inProgressTasks: 3,
-    delayedTasks: 1,
-    milestones: 3,
-    deviation: -3,
-    color: '#3b82f6',
-  },
-  {
-    id: 'bd7d-2025-002',
-    code: 'BD7D-2025-002',
-    name: 'Sistema IoT — Monitoramento Ambiental',
-    nameEn: 'IoT System — Environmental Monitoring',
-    client: 'SecretAria do Meio Ambiente — AM',
-    manager: 'Eng. Ana Lima',
-    startDate: '2025-05-01',
-    endDate: '2025-11-30',
-    progress: 18,
-    status: 'IN_PROGRESS',
-    type: 'IoT e Tecnologia da Informação',
-    typeEn: 'IoT & Information Technology',
-    description: 'Desenvolvimento e implantação de rede de sensores IoT para monitoramento ambiental em tempo real na região metropolitana de Manaus.',
-    descriptionEn: 'Development and deployment of IoT sensor network for real-time environmental monitoring in the Manaus metropolitan region.',
-    totalTasks: 12,
-    completedTasks: 2,
-    inProgressTasks: 4,
-    delayedTasks: 0,
-    milestones: 4,
-    deviation: 2,
-    color: '#22c55e',
-  },
-  {
-    id: 'bd7d-2025-003',
-    code: 'BD7D-2025-003',
-    name: 'Rede de Fibra Óptica — Campus Universitário',
-    nameEn: 'Fiber Optic Network — University Campus',
-    client: 'Universidade do Amazonas',
-    manager: 'Eng. Pedro Rocha',
-    startDate: '2025-08-01',
-    endDate: '2026-02-28',
-    progress: 0,
-    status: 'NOT_STARTED',
-    type: 'Infraestrutura de Redes',
-    typeEn: 'Network Infrastructure',
-    description: 'Implantação de rede de fibra óptica de alta velocidade interligando todos os blocos do campus universitário com capacidade de 10 Gbps.',
-    descriptionEn: 'High-speed fiber optic network deployment connecting all university campus buildings with 10 Gbps capacity.',
-    totalTasks: 10,
-    completedTasks: 0,
-    inProgressTasks: 0,
-    delayedTasks: 0,
-    milestones: 3,
-    deviation: 0,
-    color: '#a855f7',
-  },
-]
+const PALETTE = ['#3b82f6', '#22c55e', '#a855f7', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899']
+
+/** Cor determinística a partir do id, para manter estabilidade visual. */
+function colorFor(id: string): string {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0
+  return PALETTE[hash % PALETTE.length]
+}
+
+/** Mapeia o payload da API para o shape usado pela UI, com fallbacks seguros. */
+function mapApiProject(p: any): Project {
+  return {
+    id: p.id,
+    code: p.code ?? '',
+    name: p.name ?? '',
+    nameEn: p.name ?? '',
+    client: p.client?.name ?? p.responsible ?? '',
+    manager: p.responsible ?? '',
+    responsible: p.responsible ?? '',
+    startDate: typeof p.startDate === 'string' ? p.startDate : new Date(p.startDate).toISOString(),
+    endDate: typeof p.endDate === 'string' ? p.endDate : new Date(p.endDate).toISOString(),
+    progress: Math.round(p.computedProgress ?? p.progress ?? 0),
+    status: (p.status as Project['status']) ?? 'IN_PROGRESS',
+    type: p.type ?? '',
+    typeEn: p.type ?? '',
+    description: p.description ?? '',
+    descriptionEn: p.description ?? '',
+    totalTasks: p.totalTasks ?? 0,
+    completedTasks: p.completedTasks ?? 0,
+    inProgressTasks: p.inProgressTasks ?? 0,
+    delayedTasks: p.delayedTasks ?? 0,
+    milestones: p.milestones ?? 0,
+    deviation: p.deviation ?? 0,
+    color: p.color ?? colorFor(p.id),
+  }
+}
 
 const STORAGE_KEY = 'chronos_active_project_id'
 
-// Recupera o projeto salvo no localStorage, ou usa o primeiro como fallback
-function getInitialProject(): Project {
-  if (typeof window === 'undefined') return PROJECTS[0]
-  try {
-    const savedId = localStorage.getItem(STORAGE_KEY)
-    if (savedId) {
-      const found = PROJECTS.find(p => p.id === savedId)
-      if (found) return found
-    }
-  } catch {}
-  return PROJECTS[0]
-}
-
 interface ProjectContextType {
-  activeProject: Project
+  activeProject: Project | null
+  projects: Project[]
+  loading: boolean
+  error: string | null
   setActiveProject: (p: Project) => void
+  reload: () => Promise<void>
 }
 
 const ProjectContext = createContext<ProjectContextType>({
-  activeProject: PROJECTS[0],
+  activeProject: null,
+  projects: [],
+  loading: true,
+  error: null,
   setActiveProject: () => {},
+  reload: async () => {},
 })
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
-  // Inicia com PROJECTS[0] para SSR e corrige no cliente via useEffect
-  const [activeProject, setActiveProjectState] = useState<Project>(PROJECTS[0])
-  // Após hidratação, carrega o projeto salvo no localStorage
-  useEffect(() => {
-    const saved = getInitialProject()
-    setActiveProjectState(saved)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [activeProject, setActiveProjectState] = useState<Project | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/projects')
+      if (!res.ok) throw new Error('Falha ao carregar projetos')
+      const raw = await res.json()
+      const list: Project[] = Array.isArray(raw) ? raw.map(mapApiProject) : []
+      setProjects(list)
+
+      // Restaura o projeto salvo, se ainda visível; senão usa o primeiro.
+      let savedId: string | null = null
+      try { savedId = localStorage.getItem(STORAGE_KEY) } catch {}
+      const next = list.find(p => p.id === savedId) ?? list[0] ?? null
+      setActiveProjectState(next)
+    } catch (e: any) {
+      setError(e.message ?? 'Erro desconhecido')
+      setProjects([])
+      setActiveProjectState(null)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
-  // Ao trocar projeto, persiste no localStorage
+  useEffect(() => { load() }, [load])
+
   const setActiveProject = (p: Project) => {
     setActiveProjectState(p)
-    try {
-      localStorage.setItem(STORAGE_KEY, p.id)
-    } catch {}
+    try { localStorage.setItem(STORAGE_KEY, p.id) } catch {}
   }
 
   return (
-    <ProjectContext.Provider value={{ activeProject, setActiveProject }}>
+    <ProjectContext.Provider
+      value={{ activeProject, projects, loading, error, setActiveProject, reload: load }}
+    >
       {children}
     </ProjectContext.Provider>
   )

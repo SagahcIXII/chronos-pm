@@ -12,13 +12,14 @@ model User {
   name      String
   email     String   @unique
   password  String
-  role      String   @default("VIEWER")
+  role      String   @default("VIEWER") // ADMIN | MANAGER | CLIENT | VIEWER
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  projects     Project[]
-  taskComments TaskComment[]
-  taskHistory  TaskHistory[]
+  projects       Project[] @relation("ProjectOwner")
+  clientProjects Project[] @relation("ProjectClient")
+  taskComments   TaskComment[]
+  taskHistory    TaskHistory[]
   @@map("users")
 }
 
@@ -29,6 +30,10 @@ model Project {
   description  String?
   responsible  String
   ownerId      String
+  // ── Multi-tenancy ─────────────────────────────────────────
+  // Cliente externo autorizado a VER este projeto (somente leitura).
+  // Nulo = projeto interno, visível apenas para ADMIN/dono.
+  clientId     String?
   startDate    DateTime
   endDate      DateTime
   status       String   @default("IN_PROGRESS")
@@ -37,10 +42,13 @@ model Project {
   archived     Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  owner        User     @relation(fields: [ownerId], references: [id])
+  owner        User     @relation("ProjectOwner", fields: [ownerId], references: [id])
+  client       User?    @relation("ProjectClient", fields: [clientId], references: [id])
   tasks        Task[]
   baseline     Baseline?
   snapshots    ProjectSnapshot[]
+  @@index([ownerId])
+  @@index([clientId])
   @@map("projects")
 }
 

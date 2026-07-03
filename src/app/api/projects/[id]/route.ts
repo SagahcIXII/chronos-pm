@@ -1,68 +1,100 @@
+// src/app/api/projects/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { z } from 'zod'
+import { requireUser, canEdit, assertProjectAccess, accessErrorResponse } from '@/lib/access'
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+type Params = { params: { id: string } }
+
+// GET /api/projects/[id] — exige sessão E acesso ao projeto.
+export async function GET(_req: NextRequest, { params }: Params) {
   try {
+    const user = await requireUser()
+    await assertProjectAccess(params.id, user)
+
     const project = await prisma.project.findUnique({
       where: { id: params.id },
       include: {
+        owner: { select: { id: true, name: true, email: true } },
+        client: { select: { id: true, name: true, email: true } },
+        baseline: true,
         tasks: {
           include: {
-            children: true,
             predecessors: { include: { predecessor: true } },
             successors: { include: { successor: true } },
+            _count: { select: { comments: true, children: true } },
           },
-          orderBy: [{ order: 'asc' }, { createdAt: 'asc' }]
-        }
-      }
+          orderBy: [{ level: 'asc' }, { order: 'asc' }],
+        },
+      },
     })
-    if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    return NextResponse.json(project)
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return NextResponse.json({ data: project })
+  } catch (e) {
+    const { error, status } = accessErrorResponse(e)
+    return NextResponse.json({ error }, { status })
   }
 }
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+const UpdateProjectSchema = z.object({
+  name: z.string().min(2).max(200).optional(),
+  description: z.string().max(2000).nullable().optional(),
+  responsible: z.string().min(1).max(200).optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  status: z.string().optional(),
+  progress: z.number().min(0).max(100).optional(),
+  observations: z.string().max(2000).nullable().optional(),
+  clientId: z.string().nullable().optional(),
+})
 
-    const body = await req.json()
-    const { name, description, responsible, startDate, endDate, status, progress, observations } = body
+// PUT /api/projects/[id] — atualização (ADMIN/MANAGER com acesso).
+export async function PUT(req: NextRequest, { params }: Params) {
+  try {
+    const user = await requireUser()
+    await assertProjectAccess(params.id, user, { write: true })
+
+    const parsed = UpdateProjectSchema.safeParse(await req.json())
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Dados inválidos', details: parsed.error.errors }, { status: 422 })
+    }
+    const d = parsed.data
+
+    // Apenas ADMIN pode (re)atribuir o cliente de um projeto.
+    if (d.clientId !== undefined && user.role !== 'ADMIN') {
+      return NextResponse.json({ error: 'Apenas o administrador pode alterar o cliente' }, { status: 403 })
+    }
 
     const project = await prisma.project.update({
       where: { id: params.id },
       data: {
-        ...(name && { name }),
-        ...(description !== undefined && { description }),
-        ...(responsible && { responsible }),
-        ...(startDate && { startDate: new Date(startDate) }),
-        ...(endDate && { endDate: new Date(endDate) }),
-        ...(status && { status }),
-        ...(progress !== undefined && { progress }),
-        ...(observations !== undefined && { observations }),
-      }
+        ...(d.name && { name: d.name }),
+        ...(d.description !== undefined && { description: d.description }),
+        ...(d.responsible && { responsible: d.responsible }),
+        ...(d.startDate && { startDate: new Date(d.startDate) }),
+        ...(d.endDate && { endDate: new Date(d.endDate) }),
+        ...(d.status && { status: d.status }),
+        ...(d.progress !== undefined && { progress: d.progress }),
+        ...(d.observations !== undefined && { observations: d.observations }),
+        ...(d.clientId !== undefined && { clientId: d.clientId }),
+      },
     })
-    return NextResponse.json(project)
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return NextResponse.json({ data: project })
+  } catch (e) {
+    const { error, status } = accessErrorResponse(e)
+    return NextResponse.json({ error }, { status })
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+// DELETE /api/projects/[id] — arquivamento lógico (ADMIN/MANAGER com acesso).
+export async function DELETE(_req: NextRequest, { params }: Params) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const user = await requireUser()
+    await assertProjectAccess(params.id, user, { write: true })
 
-    await prisma.project.update({
-      where: { id: params.id },
-      data: { archived: true }
-    })
+    await prisma.project.update({ where: { id: params.id }, data: { archived: true } })
     return NextResponse.json({ success: true })
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+  } catch (e) {
+    const { error, status } = accessErrorResponse(e)
+    return NextResponse.json({ error }, { status })
   }
 }

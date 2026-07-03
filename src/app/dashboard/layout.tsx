@@ -10,7 +10,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter()
   const { data: session } = useSession()
   const { t, lang } = useLang()
-  const { activeProject } = useProject()
+  const { activeProject, loading } = useProject()
 
   const nav = [
     { href:'/dashboard',        label: t.nav.dashboard },
@@ -23,6 +23,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const activeLabel = nav.find(n =>
     n.href === '/dashboard' ? path === n.href : path.startsWith(n.href)
   )?.label ?? t.nav.dashboard
+
+  // Guard: enquanto carrega, ou quando o usuário não tem nenhum projeto
+  // visível (ex.: cliente sem projeto atribuído), evita render com projeto nulo.
+  if (loading || !activeProject) {
+    return (
+      <div style={{display:'flex',height:'100vh',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:14}}>
+        <div style={{fontFamily:'Syne,sans-serif',fontSize:22,fontWeight:800,color:'var(--text)'}}>Chronos PM</div>
+        {loading ? (
+          <span style={{color:'var(--text3)',fontSize:14}}>{lang==='pt'?'Carregando projetos…':'Loading projects…'}</span>
+        ) : (
+          <>
+            <span style={{color:'var(--text3)',fontSize:14}}>{lang==='pt'?'Nenhum projeto disponível para o seu usuário.':'No projects available for your account.'}</span>
+            <div style={{display:'flex',gap:10}}>
+              <button onClick={()=>router.push('/projects')}
+                style={{background:'var(--surface2)',border:'1px solid var(--border)',borderRadius:8,padding:'8px 14px',cursor:'pointer',color:'var(--text)',fontSize:13}}>
+                {lang==='pt'?'Ir para Projetos':'Go to Projects'}
+              </button>
+              <button onClick={()=>signOut({callbackUrl:'/auth/login'})}
+                style={{background:'none',border:'1px solid var(--border)',borderRadius:8,padding:'8px 14px',cursor:'pointer',color:'var(--text3)',fontSize:13}}>
+                {lang==='pt'?'Sair':'Sign out'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
 
   const projectName = lang==='pt' ? activeProject.name : activeProject.nameEn
 

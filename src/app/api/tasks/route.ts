@@ -1,10 +1,9 @@
 // src/app/api/tasks/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { computeWeightedProgress } from '@/lib/schedule'
+import { requireUser, assertProjectAccess, accessErrorResponse } from '@/lib/access'
 
 const TaskSchema = z.object({
   projectId: z.string(),
@@ -29,15 +28,15 @@ const TaskSchema = z.object({
   predecessorIds: z.array(z.string()).optional(),
 })
 
-// GET /api/tasks?projectId=xxx
+// GET /api/tasks?projectId=xxx — exige acesso ao projeto.
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-
-  const projectId = new URL(req.url).searchParams.get('projectId')
-  if (!projectId) return NextResponse.json({ error: 'projectId obrigatório' }, { status: 400 })
-
   try {
+    const user = await requireUser()
+    const projectId = new URL(req.url).searchParams.get('projectId')
+    if (!projectId) return NextResponse.json({ error: 'projectId obrigatório' }, { status: 400 })
+
+    await assertProjectAccess(projectId, user)
+
     const tasks = await prisma.task.findMany({
       where: { projectId },
       include: {
@@ -47,21 +46,23 @@ export async function GET(req: NextRequest) {
       orderBy: [{ level: 'asc' }, { order: 'asc' }],
     })
     return NextResponse.json({ data: tasks })
-  } catch {
-    return NextResponse.json({ error: 'Erro ao buscar tarefas' }, { status: 500 })
+  } catch (e) {
+    const { error, status } = accessErrorResponse(e)
+    return NextResponse.json({ error }, { status })
   }
 }
 
-// POST /api/tasks
+// POST /api/tasks — cria tarefa (exige acesso de escrita ao projeto).
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-  if (session.user.role === 'VIEWER') return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
-
   try {
-    const body = await req.json()
-    const { predecessorIds, plannedStart, plannedEnd, actualStart, actualEnd, ...data } =
-      TaskSchema.parse(body)
+    const user = await requireUser()
+    const parsed = TaskSchema.safeParse(await req.json())
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Dados inválidos', details: parsed.error.errors }, { status: 422 })
+    }
+    const { predecessorIds, plannedStart, plannedEnd, actualStart, actualEnd, ...data } = parsed.data
+
+    await assertProjectAccess(data.projectId, user, { write: true })
 
     const task = await prisma.task.create({
       data: {
@@ -72,38 +73,24 @@ export async function POST(req: NextRequest) {
         ...(actualEnd && { actualEnd: new Date(actualEnd) }),
         ...(predecessorIds?.length && {
           predecessors: {
-            create: predecessorIds.map(predId => ({
-              predecessorId: predId,
-              type: 'FINISH_TO_START',
-            })),
+            create: predecessorIds.map(predId => ({ predecessorId: predId, type: 'FINISH_TO_START' })),
           },
         }),
       },
     })
 
-    // Registra histórico
     await prisma.taskHistory.create({
-      data: {
-        taskId: task.id,
-        authorId: session.user.id,
-        changeType: 'CREATED',
-        note: 'Tarefa criada',
-      },
+      data: { taskId: task.id, authorId: user.id, changeType: 'CREATED', note: 'Tarefa criada' },
     })
 
-    // Recalcula progresso do projeto
     await recalculateProjectProgress(data.projectId)
-
     return NextResponse.json({ data: task }, { status: 201 })
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      return NextResponse.json({ error: 'Dados inválidos', details: err.errors }, { status: 422 })
-    }
-    return NextResponse.json({ error: 'Erro ao criar tarefa' }, { status: 500 })
+  } catch (e) {
+    const { error, status } = accessErrorResponse(e)
+    return NextResponse.json({ error }, { status })
   }
 }
 
-// Recalcula e persiste o progresso geral do projeto
 async function recalculateProjectProgress(projectId: string) {
   const tasks = await prisma.task.findMany({ where: { projectId } })
   const progress = computeWeightedProgress(tasks)
