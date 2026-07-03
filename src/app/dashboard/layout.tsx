@@ -123,6 +123,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <button onClick={()=>signOut({callbackUrl:'/auth/login'})}
               style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:16,padding:4,flexShrink:0}} title="Sair">→</button>
           </div>
+          <button onClick={()=>router.push('/account')}
+            style={{marginTop:8,width:'100%',background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:11.5,textAlign:'left',padding:'2px 0',fontFamily:'inherit'}}>
+            🔑 {lang==='pt'?'Trocar senha':'Change password'}
+          </button>
         </div>
       </aside>
 

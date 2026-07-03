@@ -310,6 +310,10 @@ export default function ProjectsPage() {
           <LangSwitcher/>
           <span style={{width:1,height:20,background:'var(--border)'}}/>
           <span style={{fontSize:13,color:'var(--text2)'}}>{session?.user?.name}</span>
+          <button onClick={()=>router.push('/account')}
+            style={{background:'var(--surface2)',border:'1px solid var(--border)',color:'var(--text2)',padding:'6px 14px',borderRadius:8,cursor:'pointer',fontSize:13}}>
+            {lang==='pt'?'🔑 Senha':'🔑 Password'}
+          </button>
           <button onClick={()=>signOut({callbackUrl:'/auth/login'})}
             style={{background:'var(--surface2)',border:'1px solid var(--border)',color:'var(--text2)',padding:'6px 14px',borderRadius:8,cursor:'pointer',fontSize:13}}>
             {lang==='pt'?'Sair':'Sign Out'}
