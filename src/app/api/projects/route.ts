@@ -4,6 +4,7 @@ import { z } from 'zod'
 import {
   requireUser,
   canEdit,
+  isAdmin,
   projectVisibilityWhere,
   accessErrorResponse,
 } from '@/lib/access'
@@ -77,12 +78,16 @@ export async function POST(req: NextRequest) {
     const { code, name, description, responsible, startDate, endDate, status, observations, clientId } =
       parsed.data
 
+    // Apenas ADMIN pode atribuir um cliente ao projeto. Para os demais
+    // (ex.: MANAGER criando o próprio projeto), o clientId é ignorado.
+    const effectiveClientId = isAdmin(user) ? (clientId || null) : null
+
     const existing = await prisma.project.findUnique({ where: { code } })
     if (existing) return NextResponse.json({ error: 'Código já existe' }, { status: 409 })
 
-    // Se informado, valida que o clientId é um usuário existente.
-    if (clientId) {
-      const client = await prisma.user.findUnique({ where: { id: clientId } })
+    // Se informado por um admin, valida que o clientId é um usuário existente.
+    if (effectiveClientId) {
+      const client = await prisma.user.findUnique({ where: { id: effectiveClientId } })
       if (!client) return NextResponse.json({ error: 'Cliente informado não existe' }, { status: 400 })
     }
 
@@ -93,7 +98,7 @@ export async function POST(req: NextRequest) {
         description: description || null,
         responsible,
         ownerId: user.id,
-        clientId: clientId || null,
+        clientId: effectiveClientId,
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         status: status || 'IN_PROGRESS',

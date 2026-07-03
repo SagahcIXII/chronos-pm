@@ -41,6 +41,8 @@ function ProjectModal({ project, onClose, onSave, lang }: {
   lang: string
 }) {
   const isEdit = !!project
+  const { data: session } = useSession()
+  const isAdmin = (session?.user as any)?.role === 'ADMIN'
   const [form, setForm] = useState({
     code: project?.code ?? '',
     name: project?.name ?? '',
@@ -56,13 +58,14 @@ function ProjectModal({ project, onClose, onSave, lang }: {
   const [error, setError] = useState('')
   const [clients, setClients] = useState<ClientOption[]>([])
 
-  // Carrega os usuários-cliente para o seletor.
+  // Carrega os usuários-cliente para o seletor (apenas admin usa o campo).
   useEffect(() => {
+    if (!isAdmin) return
     fetch('/api/users?role=CLIENT')
       .then(r => r.ok ? r.json() : { data: [] })
       .then(j => setClients(j.data ?? []))
       .catch(() => setClients([]))
-  }, [])
+  }, [isAdmin])
 
   const statusOptions = lang === 'pt'
     ? [['IN_PROGRESS','Em Andamento'],['NOT_STARTED','Não Iniciado'],['COMPLETED','Concluído'],['ON_HOLD','Pausado']]
@@ -150,19 +153,21 @@ function ProjectModal({ project, onClose, onSave, lang }: {
                 onChange={e=>setForm(p=>({...p,endDate:e.target.value}))}/>
             </div>
           </div>
-          <div>
-            <label style={LABEL}>{lang==='pt'?'Cliente (quem pode visualizar)':'Client (who can view)'}</label>
-            <select style={{...INPUT,cursor:'pointer'}} value={form.clientId}
-              onChange={e=>setForm(p=>({...p,clientId:e.target.value}))}>
-              <option value="">{lang==='pt'?'— Nenhum (projeto interno) —':'— None (internal project) —'}</option>
-              {clients.map(c=><option key={c.id} value={c.id}>{c.name} ({c.email})</option>)}
-            </select>
-            <p style={{fontSize:11,color:'var(--text3)',marginTop:5}}>
-              {lang==='pt'
-                ? 'O cliente selecionado verá este projeto (somente leitura). Deixe em branco para manter interno.'
-                : 'The selected client will see this project (read-only). Leave blank to keep it internal.'}
-            </p>
-          </div>
+          {isAdmin && (
+            <div>
+              <label style={LABEL}>{lang==='pt'?'Cliente (quem pode visualizar)':'Client (who can view)'}</label>
+              <select style={{...INPUT,cursor:'pointer'}} value={form.clientId}
+                onChange={e=>setForm(p=>({...p,clientId:e.target.value}))}>
+                <option value="">{lang==='pt'?'— Nenhum (projeto interno) —':'— None (internal project) —'}</option>
+                {clients.map(c=><option key={c.id} value={c.id}>{c.name} ({c.email})</option>)}
+              </select>
+              <p style={{fontSize:11,color:'var(--text3)',marginTop:5}}>
+                {lang==='pt'
+                  ? 'O cliente selecionado verá este projeto (somente leitura). Deixe em branco para manter interno.'
+                  : 'The selected client will see this project (read-only). Leave blank to keep it internal.'}
+              </p>
+            </div>
+          )}
           <div>
             <label style={LABEL}>{lang==='pt'?'Observações':'Observations'}</label>
             <textarea style={{...INPUT,minHeight:60,resize:'vertical' as const}} value={form.observations}
