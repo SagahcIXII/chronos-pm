@@ -1,7 +1,8 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
+import { useSession } from 'next-auth/react'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface Task {
@@ -48,6 +49,90 @@ const toInput = (s?: string | null) => {
 }
 const isDelayed = (t: Task) =>
   t.status !== 'COMPLETED' && t.plannedEnd && t.plannedEnd < new Date().toISOString().slice(0, 10)
+
+// ── Anexos ─────────────────────────────────────────────────────────────────
+interface Attachment { id: string; name: string; url: string; size: number | null; mimeType: string | null; createdAt: string }
+
+const fmtBytes = (n: number | null) => {
+  if (!n) return ''
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
+function AttachmentsSection({ taskId, pt }: { taskId: string; pt: boolean }) {
+  const { data: session } = useSession()
+  const canEdit = ['ADMIN', 'MANAGER'].includes((session?.user as any)?.role)
+  const [list, setList] = useState<Attachment[]>([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/attachments`)
+      if (res.ok) { const j = await res.json(); setList(j.data ?? []) }
+    } finally { setLoading(false) }
+  }, [taskId])
+
+  useEffect(() => { load() }, [load])
+
+  const upload = async (file: File) => {
+    setUploading(true); setError('')
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`/api/tasks/${taskId}/attachments`, { method: 'POST', body: fd })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) setError(d.error || (pt ? 'Falha no upload' : 'Upload failed'))
+      else load()
+    } catch { setError(pt ? 'Erro de conexão' : 'Connection error') }
+    finally { setUploading(false); if (fileRef.current) fileRef.current.value = '' }
+  }
+
+  const remove = async (id: string) => {
+    await fetch(`/api/tasks/${taskId}/attachments?attachmentId=${id}`, { method: 'DELETE' })
+    load()
+  }
+
+  return (
+    <div>
+      <label style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4, display: 'block' }}>
+        {pt ? 'Anexos' : 'Attachments'}
+      </label>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {loading ? (
+          <span style={{ fontSize: 12, color: 'var(--text3)' }}>…</span>
+        ) : list.length === 0 ? (
+          <span style={{ fontSize: 12, color: 'var(--text3)' }}>{pt ? 'Nenhum anexo.' : 'No attachments.'}</span>
+        ) : list.map(a => (
+          <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px' }}>
+            <span style={{ fontSize: 14 }}>📎</span>
+            <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ flex: 1, fontSize: 12.5, color: 'var(--text)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</a>
+            <span style={{ fontSize: 11, color: 'var(--text3)' }}>{fmtBytes(a.size)}</span>
+            {canEdit && (
+              <button onClick={() => remove(a.id)} title={pt ? 'Remover' : 'Remove'}
+                style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 14 }}>×</button>
+            )}
+          </div>
+        ))}
+      </div>
+      {error && <p style={{ fontSize: 12, color: '#f87171', marginTop: 6 }}>{error}</p>}
+      {canEdit && (
+        <div style={{ marginTop: 8 }}>
+          <input ref={fileRef} type="file" style={{ display: 'none' }}
+            onChange={e => { const f = e.target.files?.[0]; if (f) upload(f) }} />
+          <button className="btn btn-secondary btn-sm" disabled={uploading} onClick={() => fileRef.current?.click()}>
+            {uploading ? (pt ? 'Enviando…' : 'Uploading…') : (pt ? '📎 Adicionar anexo' : '📎 Add attachment')}
+          </button>
+          <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 8 }}>{pt ? 'até 4 MB' : 'up to 4 MB'}</span>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Modal ──────────────────────────────────────────────────────────────────
 function TaskModal({ task, tasks, projectId, onClose, onSaved }: {
@@ -251,6 +336,9 @@ function TaskModal({ task, tasks, projectId, onClose, onSaved }: {
             <label style={LABEL}>{pt ? 'Observações' : 'Observations'}</label>
             <textarea className="form-control" rows={2} value={form.observations} onChange={e => set('observations', e.target.value)} style={{ resize: 'vertical' }} />
           </div>
+
+          {/* Anexos (apenas ao editar uma tarefa existente) */}
+          {task && <AttachmentsSection taskId={task.id} pt={pt} />}
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>

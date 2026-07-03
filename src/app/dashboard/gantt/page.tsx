@@ -2,6 +2,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
+import { useSession } from 'next-auth/react'
 
 type Scale = 'days' | 'weeks' | 'months'
 
@@ -31,6 +32,15 @@ export default function GanttPage() {
   const [selected, setSelected] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const chartRef = useRef<HTMLDivElement>(null)
+
+  const { data: session } = useSession()
+  const editable = ['ADMIN', 'MANAGER'].includes((session?.user as any)?.role)
+  type DragMode = 'move' | 'resize-l' | 'resize-r' | 'milestone'
+  type DragState = { id: string; mode: DragMode; origStart: string | null; origEnd: string | null; startX: number }
+  const [drag, setDrag] = useState<DragState | null>(null)
+  const [dragDelta, setDragDelta] = useState(0)
+  const dragRef = useRef<DragState | null>(null)
+  const deltaRef = useRef(0)
 
   const load = useCallback(async () => {
     if (!activeProject?.id) return
@@ -93,6 +103,57 @@ export default function GanttPage() {
     }
   }
 
+  // ── Drag & drop de datas ──────────────────────────────
+  const toDay = (s: string) => new Date(s.includes('T') ? s : s + 'T12:00:00')
+  const addDaysStr = (s: string, n: number) => { const d = toDay(s); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10) }
+
+  const effDates = (task: Task): { s?: string | null; e?: string | null } => {
+    if (!drag || drag.id !== task.id) return { s: task.plannedStart, e: task.plannedEnd }
+    const n = dragDelta
+    if (drag.mode === 'move') return { s: drag.origStart ? addDaysStr(drag.origStart, n) : task.plannedStart, e: drag.origEnd ? addDaysStr(drag.origEnd, n) : task.plannedEnd }
+    if (drag.mode === 'resize-l') { let s = drag.origStart ? addDaysStr(drag.origStart, n) : task.plannedStart; const e = task.plannedEnd; if (s && e && s >= e) s = addDaysStr(e, -1); return { s, e } }
+    if (drag.mode === 'resize-r') { const s = task.plannedStart; let e = drag.origEnd ? addDaysStr(drag.origEnd, n) : task.plannedEnd; if (s && e && e <= s) e = addDaysStr(s, 1); return { s, e } }
+    if (drag.mode === 'milestone') return { s: task.plannedStart, e: drag.origEnd ? addDaysStr(drag.origEnd, n) : task.plannedEnd }
+    return { s: task.plannedStart, e: task.plannedEnd }
+  }
+
+  const beginDrag = (e: { clientX: number; stopPropagation: () => void; preventDefault: () => void }, task: Task, mode: DragMode) => {
+    if (!editable || task.isGroup) return
+    if (mode !== 'milestone' && (!task.plannedStart || !task.plannedEnd)) return
+    if (mode === 'milestone' && !task.plannedEnd) return
+    e.stopPropagation(); e.preventDefault()
+    const d: DragState = { id: task.id, mode, origStart: task.plannedStart ?? null, origEnd: task.plannedEnd ?? null, startX: e.clientX }
+    dragRef.current = d; deltaRef.current = 0; setDrag(d); setDragDelta(0)
+  }
+
+  const commitDrag = async (d: DragState, dd: number) => {
+    const task = tasks.find(t => t.id === d.id); if (!task) return
+    let ns = task.plannedStart ?? null, ne = task.plannedEnd ?? null
+    if (d.mode === 'move') { ns = d.origStart ? addDaysStr(d.origStart, dd) : ns; ne = d.origEnd ? addDaysStr(d.origEnd, dd) : ne }
+    else if (d.mode === 'resize-l') { ns = d.origStart ? addDaysStr(d.origStart, dd) : ns; if (ns && ne && ns >= ne) ns = addDaysStr(ne, -1) }
+    else if (d.mode === 'resize-r') { ne = d.origEnd ? addDaysStr(d.origEnd, dd) : ne; if (ns && ne && ne <= ns) ne = addDaysStr(ns, 1) }
+    else if (d.mode === 'milestone') { ne = d.origEnd ? addDaysStr(d.origEnd, dd) : ne }
+    setTasks(prev => prev.map(t => t.id === d.id ? { ...t, plannedStart: ns, plannedEnd: ne } : t))
+    try {
+      await fetch(`/api/tasks/${d.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plannedStart: ns, plannedEnd: ne }) })
+    } catch {}
+    load()
+  }
+
+  useEffect(() => {
+    if (!drag) return
+    const onMove = (e: MouseEvent) => { const dd = Math.round((e.clientX - drag.startX) / PPD); deltaRef.current = dd; setDragDelta(dd) }
+    const onUp = () => {
+      const d = dragRef.current; const dd = deltaRef.current
+      dragRef.current = null; deltaRef.current = 0; setDrag(null); setDragDelta(0)
+      if (d && dd !== 0) commitDrag(d, dd)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drag, PPD])
+
   const sel = selected ? tasks.find(t => t.id === selected) : null
   const ROW_H = 44, HEADER_H = 48
 
@@ -115,6 +176,7 @@ export default function GanttPage() {
         <input className="form-control" style={{ height: 32, width: 200, fontSize: 12 }} placeholder={`🔍 ${g.search}`} value={search} onChange={e => setSearch(e.target.value)} />
         <button className="btn btn-secondary btn-sm" onClick={() => setExpanded(new Set(tasks.filter(t => t.isGroup).map(t => t.id)))}>{g.expandAll}</button>
         <button className="btn btn-secondary btn-sm" onClick={() => setExpanded(new Set())}>{g.collapseAll}</button>
+        {editable && <span style={{ fontSize: 11, color: 'var(--text3)' }}>✋ {lang === 'pt' ? 'Arraste as barras para ajustar datas' : 'Drag bars to adjust dates'}</span>}
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', gap: 12, fontSize: 11.5, color: 'var(--text3)', alignItems: 'center' }}>
           {[{ c: '#3b82f6', l: g.legendPlanned }, { c: '#22c55e', l: g.legendExecuted }, { c: '#ef4444', l: g.legendDelayed }, { c: '#f59e0b', l: g.legendCritical }, { c: '#a855f7', l: g.legendMilestone }].map(x => (
@@ -182,23 +244,38 @@ export default function GanttPage() {
                 {visible.map((task, i) => {
                   const y = i * ROW_H; const delayed = isDelayed(task)
                   if (task.isMilestone) {
-                    const mx = d2x(task.plannedEnd), my = y + ROW_H / 2, sz = 10
-                    return <g key={task.id + 'b'} style={{ cursor: 'pointer' }} onClick={() => setSelected(task.id === selected ? null : task.id)}>
-                      <polygon points={`${mx},${my - sz} ${mx + sz},${my} ${mx},${my + sz} ${mx - sz},${my}`} fill="#a855f7" opacity={0.9} />
+                    const ed = effDates(task)
+                    const mx = d2x(ed.e), my = y + ROW_H / 2, sz = 10
+                    const dragging = drag?.id === task.id
+                    return <g key={task.id + 'b'} onClick={() => setSelected(task.id === selected ? null : task.id)}>
+                      <polygon points={`${mx},${my - sz} ${mx + sz},${my} ${mx},${my + sz} ${mx - sz},${my}`} fill="#a855f7" opacity={dragging ? 1 : 0.9}
+                        style={{ cursor: editable ? (dragging ? 'grabbing' : 'grab') : 'pointer' }}
+                        onMouseDown={e => beginDrag(e, task, 'milestone')} />
                       {task.actualEnd && <polygon points={`${d2x(task.actualEnd)},${my - sz * .7} ${d2x(task.actualEnd) + sz * .7},${my} ${d2x(task.actualEnd)},${my + sz * .7} ${d2x(task.actualEnd) - sz * .7},${my}`} fill="#22c55e" opacity={0.7} />}
+                      {dragging && <text x={mx} y={my - sz - 4} textAnchor="middle" fill="var(--text)" fontSize={10} fontFamily="DM Sans,sans-serif">{fmtS(ed.e)}</text>}
                     </g>
                   }
-                  const px = d2x(task.plannedStart), pw = dur2w(task.plannedStart, task.plannedEnd)
+                  const ed = effDates(task)
+                  const px = d2x(ed.s), pw = dur2w(ed.s, ed.e)
                   const bc = delayed ? '#ef4444' : task.isCritical ? '#f59e0b' : '#3b82f6'
                   const PY = task.isGroup ? y + ROW_H * .2 : y + ROW_H * .18, PH = task.isGroup ? ROW_H * .42 : ROW_H * .35
                   const EY = y + ROW_H * .58, EH = task.isGroup ? ROW_H * .2 : ROW_H * .25
                   const ax = task.actualStart ? d2x(task.actualStart) : null
                   const aw = ax !== null ? task.actualEnd ? dur2w(task.actualStart, task.actualEnd) : Math.max(4, pw * task.progress / 100) : null
-                  return <g key={task.id + 'b'} style={{ cursor: 'pointer' }} onClick={() => setSelected(task.id === selected ? null : task.id)}>
-                    <rect x={px} y={PY} width={pw} height={PH} rx={3} fill={bc} opacity={task.isGroup ? .5 : .85} />
+                  const canDrag = editable && !task.isGroup
+                  const dragging = drag?.id === task.id
+                  return <g key={task.id + 'b'} onClick={() => setSelected(task.id === selected ? null : task.id)}>
+                    <rect x={px} y={PY} width={pw} height={PH} rx={3} fill={bc} opacity={task.isGroup ? .5 : dragging ? 1 : .85}
+                      style={{ cursor: canDrag ? (dragging ? 'grabbing' : 'grab') : 'pointer' }}
+                      onMouseDown={e => canDrag && beginDrag(e, task, 'move')} />
+                    {canDrag && pw >= 16 && <>
+                      <rect x={px} y={PY} width={6} height={PH} fill="transparent" style={{ cursor: 'ew-resize' }} onMouseDown={e => beginDrag(e, task, 'resize-l')} />
+                      <rect x={px + pw - 6} y={PY} width={6} height={PH} fill="transparent" style={{ cursor: 'ew-resize' }} onMouseDown={e => beginDrag(e, task, 'resize-r')} />
+                    </>}
                     {ax !== null && aw !== null && <rect x={ax} y={EY} width={aw} height={EH} rx={2} fill="#22c55e" opacity={.9} />}
-                    {pw > 36 && task.progress > 0 && <text x={px + 5} y={PY + PH * .75} fill="white" fontSize={9.5} fontFamily="DM Sans,sans-serif" opacity={.95}>{task.progress}%</text>}
-                    {task.isCritical && !task.isGroup && <rect x={px} y={y + ROW_H - 3} width={pw} height={2} fill="#f59e0b" opacity={.6} />}
+                    {pw > 36 && task.progress > 0 && <text x={px + 5} y={PY + PH * .75} fill="white" fontSize={9.5} fontFamily="DM Sans,sans-serif" opacity={.95} style={{ pointerEvents: 'none' }}>{task.progress}%</text>}
+                    {task.isCritical && !task.isGroup && <rect x={px} y={y + ROW_H - 3} width={pw} height={2} fill="#f59e0b" opacity={.6} style={{ pointerEvents: 'none' }} />}
+                    {dragging && <text x={px + pw / 2} y={PY - 4} textAnchor="middle" fill="var(--text)" fontSize={10} fontFamily="DM Sans,sans-serif">{fmtS(ed.s)} → {fmtS(ed.e)}</text>}
                   </g>
                 })}
                 <line x1={todayX} y1={0} x2={todayX} y2={visible.length * ROW_H} stroke="#ef4444" strokeWidth={1.5} strokeDasharray="6,4" opacity={.9} />
