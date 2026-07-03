@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
 import { useSession } from 'next-auth/react'
+import { buildOrderedTasks } from '@/lib/taskTree'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface Task {
@@ -386,8 +387,16 @@ export default function TasksPage() {
 
   const toggle = (id: string) => setExpanded(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
 
-  const visible = tasks.filter(task => {
-    if (task.parentId && !expanded.has(task.parentId)) return false
+  // Ordena cronologicamente + numera (WBS) e filtra por visibilidade/busca.
+  const byId = new Map(tasks.map(t => [t.id, t]))
+  const ancestorsExpanded = (task: Task) => {
+    let p = task.parentId
+    while (p) { if (!expanded.has(p)) return false; p = byId.get(p)?.parentId ?? null }
+    return true
+  }
+  const ordered = buildOrderedTasks(tasks)
+  const visible = ordered.filter(task => {
+    if (!ancestorsExpanded(task)) return false
     if (search && !task.name.toLowerCase().includes(search.toLowerCase())) return false
     if (filterStatus && task.status !== filterStatus) return false
     return true
@@ -491,8 +500,9 @@ export default function TasksPage() {
                             ? <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 12 }} onClick={e => { e.stopPropagation(); toggle(task.id) }}>{expanded.has(task.id) ? '▾' : '▸'}</button>
                             : <span style={{ width: 16, display: 'block' }} />}
                         </td>
-                        <td style={{ paddingLeft: task.level * 14 }}>
+                        <td style={{ paddingLeft: task.depth * 14 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums', minWidth: 28, flexShrink: 0 }}>{task.wbs}</span>
                             {task.isMilestone && <span style={{ color: '#a855f7', fontSize: 11 }}>◆</span>}
                             {task.isCritical && !task.isMilestone && <span style={{ color: '#f59e0b', fontSize: 11 }}>⚡</span>}
                             {delayed && <span style={{ color: 'var(--red)', fontSize: 11 }}>⏰</span>}

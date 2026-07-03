@@ -3,6 +3,7 @@ import { useRef, useState, useEffect, useCallback } from 'react'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
 import { useSession } from 'next-auth/react'
+import { buildOrderedTasks } from '@/lib/taskTree'
 
 type Scale = 'days' | 'weeks' | 'months'
 
@@ -56,8 +57,14 @@ export default function GanttPage() {
 
   useEffect(() => { load() }, [load])
 
-  const visible = tasks.filter(task => {
-    if (task.parentId && !expanded.has(task.parentId)) return false
+  const byId = new Map(tasks.map(t => [t.id, t]))
+  const ancestorsExpanded = (task: Task) => {
+    let p = task.parentId
+    while (p) { if (!expanded.has(p)) return false; p = byId.get(p)?.parentId ?? null }
+    return true
+  }
+  const visible = buildOrderedTasks(tasks).filter(task => {
+    if (!ancestorsExpanded(task)) return false
     if (search && !task.name.toLowerCase().includes(search.toLowerCase())) return false
     return true
   })
@@ -206,12 +213,13 @@ export default function GanttPage() {
               const delayed = isDelayed(task)
               return (
                 <div key={task.id}
-                  style={{ display: 'grid', gridTemplateColumns: '32px 1fr 72px 72px 44px', paddingLeft: 8 + task.level * 16, paddingRight: 12, minHeight: ROW_H, alignItems: 'center', borderBottom: '1px solid var(--border)', cursor: 'pointer', background: task.id === selected ? 'rgba(59,130,246,0.1)' : task.isGroup ? 'var(--surface2)' : 'transparent' }}
+                  style={{ display: 'grid', gridTemplateColumns: '32px 1fr 72px 72px 44px', paddingLeft: 8 + task.depth * 16, paddingRight: 12, minHeight: ROW_H, alignItems: 'center', borderBottom: '1px solid var(--border)', cursor: 'pointer', background: task.id === selected ? 'rgba(59,130,246,0.1)' : task.isGroup ? 'var(--surface2)' : 'transparent' }}
                   onClick={() => setSelected(task.id === selected ? null : task.id)}>
                   <div>{hasKids ? <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 12 }} onClick={e => { e.stopPropagation(); toggle(task.id) }}>{expanded.has(task.id) ? '▾' : '▸'}</button> : <span style={{ width: 16, display: 'block' }} />}</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
                     {task.isMilestone && <span style={{ color: '#a855f7', fontSize: 11 }}>◆</span>}
                     {task.isCritical && !task.isMilestone && <span style={{ color: '#f59e0b', fontSize: 11 }}>⚡</span>}
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{task.wbs}</span>
                     <span style={{ fontSize: 12.5, fontWeight: task.isGroup ? 700 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.name}</span>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text3)' }}>{fmtS(task.plannedStart)}</div>
