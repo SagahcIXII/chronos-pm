@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation'
 import { useProject } from '@/lib/projectContext'
 import { useLang, LangSwitcher } from '@/lib/i18n'
 import { signOut, useSession } from 'next-auth/react'
+import { ThemeToggle } from '@/components/ThemeToggle'
+import { Plus, Pencil, Trash2, X, Save, AlertCircle, Loader2, Users, KeyRound, FolderOpen, Archive, ArrowRight } from 'lucide-react'
 
 interface Project {
   id: string; code: string; name: string; description?: string
@@ -100,9 +102,9 @@ function ProjectModal({ project, onClose, onSave, lang }: {
         {/* Header */}
         <div style={{padding:'20px 24px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
           <h2 style={{fontFamily:'Syne,sans-serif',fontSize:18,fontWeight:800,color:'var(--text)'}}>
-            {isEdit ? (lang==='pt'?'✏️ Editar Projeto':'✏️ Edit Project') : (lang==='pt'?'➕ Novo Projeto':'➕ New Project')}
+            <span style={{display:'inline-flex',alignItems:'center',gap:8}}>{isEdit ? <Pencil size={17}/> : <Plus size={18}/>} {isEdit ? (lang==='pt'?'Editar Projeto':'Edit Project') : (lang==='pt'?'Novo Projeto':'New Project')}</span>
           </h2>
-          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:20}}>✕</button>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',display:'flex',alignItems:'center'}}><X size={20}/></button>
         </div>
         {/* Body */}
         <div style={{padding:24,display:'flex',flexDirection:'column',gap:16}}>
@@ -176,7 +178,7 @@ function ProjectModal({ project, onClose, onSave, lang }: {
           </div>
           {error && (
             <div style={{background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:8,padding:'10px 14px',fontSize:13,color:'#f87171'}}>
-              ❌ {error}
+              <span style={{display:'inline-flex',alignItems:'center',gap:8}}><AlertCircle size={15}/> {error}</span>
             </div>
           )}
         </div>
@@ -184,7 +186,7 @@ function ProjectModal({ project, onClose, onSave, lang }: {
         <div style={{padding:'16px 24px',borderTop:'1px solid var(--border)',display:'flex',justifyContent:'flex-end',gap:10}}>
           <button onClick={onClose} className="btn btn-secondary">{lang==='pt'?'Cancelar':'Cancel'}</button>
           <button onClick={handleSubmit} disabled={saving} className="btn btn-primary">
-            {saving ? '⏳' : (isEdit ? (lang==='pt'?'💾 Salvar Alterações':'💾 Save Changes') : (lang==='pt'?'✅ Criar Projeto':'✅ Create Project'))}
+            <span style={{display:'inline-flex',alignItems:'center',gap:7}}>{saving ? <Loader2 size={15} className="animate-spin"/> : (isEdit ? <Save size={15}/> : <Plus size={15}/>)} {isEdit ? (lang==='pt'?'Salvar Alterações':'Save Changes') : (lang==='pt'?'Criar Projeto':'Create Project')}</span>
           </button>
         </div>
       </div>
@@ -205,7 +207,7 @@ function DeleteModal({ project, onClose, onConfirm, lang }: {
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
       <div style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:14,width:'100%',maxWidth:420,boxShadow:'0 24px 48px rgba(0,0,0,0.4)'}}>
         <div style={{padding:24,display:'flex',flexDirection:'column',gap:16,textAlign:'center'}}>
-          <div style={{fontSize:48}}>🗑️</div>
+          <div style={{color:'var(--red2)',display:'flex',justifyContent:'center'}}><Trash2 size={44}/></div>
           <h2 style={{fontFamily:'Syne,sans-serif',fontSize:18,fontWeight:800,color:'var(--text)'}}>
             {lang==='pt'?'Arquivar Projeto?':'Archive Project?'}
           </h2>
@@ -218,7 +220,7 @@ function DeleteModal({ project, onClose, onConfirm, lang }: {
           <div style={{display:'flex',gap:10,justifyContent:'center'}}>
             <button onClick={onClose} className="btn btn-secondary">{lang==='pt'?'Cancelar':'Cancel'}</button>
             <button onClick={handleDelete} disabled={deleting} style={{background:'#ef4444',color:'white',border:'none',padding:'9px 20px',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:13}}>
-              {deleting ? '⏳' : (lang==='pt'?'🗑️ Arquivar':'🗑️ Archive')}
+              <span style={{display:'inline-flex',alignItems:'center',gap:7}}>{deleting ? <Loader2 size={15} className="animate-spin"/> : <Archive size={15}/>} {lang==='pt'?'Arquivar':'Archive'}</span>
             </button>
           </div>
         </div>
@@ -303,16 +305,17 @@ export default function ProjectsPage() {
         <div style={{display:'flex',alignItems:'center',gap:12}}>
           {(session?.user as any)?.role === 'ADMIN' && (
             <button onClick={()=>router.push('/users')}
-              style={{background:'var(--surface2)',border:'1px solid var(--border)',color:'var(--text2)',padding:'6px 14px',borderRadius:8,cursor:'pointer',fontSize:13}}>
-              {lang==='pt'?'👥 Usuários':'👥 Users'}
+              style={{background:'var(--surface2)',border:'1px solid var(--border)',color:'var(--text2)',padding:'6px 14px',borderRadius:8,cursor:'pointer',fontSize:13,display:'inline-flex',alignItems:'center',gap:6}}>
+              <Users size={15}/> {lang==='pt'?'Usuários':'Users'}
             </button>
           )}
+          <ThemeToggle/>
           <LangSwitcher/>
           <span style={{width:1,height:20,background:'var(--border)'}}/>
           <span style={{fontSize:13,color:'var(--text2)'}}>{session?.user?.name}</span>
           <button onClick={()=>router.push('/account')}
-            style={{background:'var(--surface2)',border:'1px solid var(--border)',color:'var(--text2)',padding:'6px 14px',borderRadius:8,cursor:'pointer',fontSize:13}}>
-            {lang==='pt'?'🔑 Senha':'🔑 Password'}
+            style={{background:'var(--surface2)',border:'1px solid var(--border)',color:'var(--text2)',padding:'6px 14px',borderRadius:8,cursor:'pointer',fontSize:13,display:'inline-flex',alignItems:'center',gap:6}}>
+            <KeyRound size={15}/> {lang==='pt'?'Senha':'Password'}
           </button>
           <button onClick={()=>signOut({callbackUrl:'/auth/login'})}
             style={{background:'var(--surface2)',border:'1px solid var(--border)',color:'var(--text2)',padding:'6px 14px',borderRadius:8,cursor:'pointer',fontSize:13}}>
@@ -333,8 +336,8 @@ export default function ProjectsPage() {
               {loading ? '...' : `${projects.length} ${lang==='pt'?'projetos cadastrados':'registered projects'}`}
             </p>
           </div>
-          <button onClick={()=>setShowNewModal(true)} className="btn btn-primary" style={{padding:'10px 20px',fontSize:14}}>
-            ➕ {lang==='pt'?'Novo Projeto':'New Project'}
+          <button onClick={()=>setShowNewModal(true)} className="btn btn-primary" style={{padding:'10px 20px',fontSize:14,display:'inline-flex',alignItems:'center',gap:7}}>
+            <Plus size={16}/> {lang==='pt'?'Novo Projeto':'New Project'}
           </button>
         </div>
 
@@ -355,8 +358,8 @@ export default function ProjectsPage() {
 
         {/* Loading */}
         {loading && (
-          <div style={{textAlign:'center',padding:48,color:'var(--text3)',fontSize:14}}>
-            ⏳ {lang==='pt'?'Carregando projetos...':'Loading projects...'}
+          <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:48,color:'var(--text3)',fontSize:14}}>
+            <Loader2 size={16} className="animate-spin"/> {lang==='pt'?'Carregando projetos...':'Loading projects...'}
           </div>
         )}
 
@@ -365,7 +368,7 @@ export default function ProjectsPage() {
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(340px,1fr))',gap:20}}>
             {projects.length === 0 && (
               <div style={{gridColumn:'1/-1',textAlign:'center',padding:64,color:'var(--text3)'}}>
-                <div style={{fontSize:48,marginBottom:12}}>📂</div>
+                <div style={{marginBottom:12,display:'flex',justifyContent:'center',color:'var(--text3)'}}><FolderOpen size={44}/></div>
                 <p style={{fontSize:16,fontWeight:600,marginBottom:6}}>{lang==='pt'?'Nenhum projeto cadastrado':'No projects registered'}</p>
                 <p style={{fontSize:13}}>{lang==='pt'?'Clique em "Novo Projeto" para começar.':'Click "New Project" to get started.'}</p>
               </div>
@@ -421,15 +424,15 @@ export default function ProjectsPage() {
                   {/* Buttons */}
                   <div style={{display:'flex',gap:8}}>
                     <button onClick={()=>handleSelect(project)}
-                      style={{flex:1,background:color,color:'white',border:'none',padding:'9px',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:13}}>
-                      {lang==='pt'?'→ Abrir':'→ Open'}
+                      style={{flex:1,background:color,color:'white',border:'none',padding:'9px',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:13,display:'inline-flex',alignItems:'center',justifyContent:'center',gap:6}}>
+                      <ArrowRight size={15}/> {lang==='pt'?'Abrir':'Open'}
                     </button>
                     <button onClick={e=>{e.stopPropagation();setEditProject(project)}}
-                      style={{background:'var(--surface2)',border:'1px solid var(--border)',color:'var(--text2)',padding:'9px 14px',borderRadius:8,cursor:'pointer',fontSize:14}}
-                      title={lang==='pt'?'Editar':'Edit'}>✏️</button>
+                      style={{background:'var(--surface2)',border:'1px solid var(--border)',color:'var(--text2)',padding:'9px 12px',borderRadius:8,cursor:'pointer',display:'flex',alignItems:'center'}}
+                      title={lang==='pt'?'Editar':'Edit'}><Pencil size={15}/></button>
                     <button onClick={e=>{e.stopPropagation();setDeleteProject(project)}}
-                      style={{background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.2)',color:'#f87171',padding:'9px 14px',borderRadius:8,cursor:'pointer',fontSize:14}}
-                      title={lang==='pt'?'Arquivar':'Archive'}>🗑️</button>
+                      style={{background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.2)',color:'#f87171',padding:'9px 12px',borderRadius:8,cursor:'pointer',display:'flex',alignItems:'center'}}
+                      title={lang==='pt'?'Arquivar':'Archive'}><Trash2 size={15}/></button>
                   </div>
                 </div>
               )

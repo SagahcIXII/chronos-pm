@@ -4,6 +4,7 @@ import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
 import { useSession } from 'next-auth/react'
 import { buildOrderedTasks } from '@/lib/taskTree'
+import { Paperclip, Search, ClipboardList, ChevronDown, ChevronRight, Diamond, Zap, Clock, Pencil, Trash2, Loader2 } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface Task {
@@ -110,7 +111,7 @@ function AttachmentsSection({ taskId, pt }: { taskId: string; pt: boolean }) {
           <span style={{ fontSize: 12, color: 'var(--text3)' }}>{pt ? 'Nenhum anexo.' : 'No attachments.'}</span>
         ) : list.map(a => (
           <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px' }}>
-            <span style={{ fontSize: 14 }}>📎</span>
+            <Paperclip size={14} style={{ color: 'var(--text3)', flexShrink: 0 }} />
             <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ flex: 1, fontSize: 12.5, color: 'var(--text)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</a>
             <span style={{ fontSize: 11, color: 'var(--text3)' }}>{fmtBytes(a.size)}</span>
             {canEdit && (
@@ -125,8 +126,8 @@ function AttachmentsSection({ taskId, pt }: { taskId: string; pt: boolean }) {
         <div style={{ marginTop: 8 }}>
           <input ref={fileRef} type="file" style={{ display: 'none' }}
             onChange={e => { const f = e.target.files?.[0]; if (f) upload(f) }} />
-          <button className="btn btn-secondary btn-sm" disabled={uploading} onClick={() => fileRef.current?.click()}>
-            {uploading ? (pt ? 'Enviando…' : 'Uploading…') : (pt ? '📎 Adicionar anexo' : '📎 Add attachment')}
+          <button className="btn btn-secondary btn-sm" disabled={uploading} onClick={() => fileRef.current?.click()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {uploading ? <Loader2 size={13} className="animate-spin" /> : <Paperclip size={13} />} {uploading ? (pt ? 'Enviando…' : 'Uploading…') : (pt ? 'Adicionar anexo' : 'Add attachment')}
           </button>
           <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 8 }}>{pt ? 'até 4 MB' : 'up to 4 MB'}</span>
         </div>
@@ -451,7 +452,10 @@ export default function TasksPage() {
 
         {/* Filters */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', flexShrink: 0 }}>
-          <input className="form-control" style={{ height: 32, width: 220, fontSize: 12 }} placeholder={`🔍 ${tk.search}`} value={search} onChange={e => setSearch(e.target.value)} />
+          <div style={{ position: 'relative', width: 220 }}>
+            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)' }} />
+            <input className="form-control" style={{ height: 32, width: '100%', fontSize: 12, paddingLeft: 30 }} placeholder={tk.search} value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
           <select className="form-control" style={{ height: 32, width: 180, fontSize: 12 }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
             <option value="">{tk.allStatus}</option>
             <option value="COMPLETED">{tk.completed}</option>
@@ -474,7 +478,7 @@ export default function TasksPage() {
             </div>
           ) : tasks.length === 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 12, color: 'var(--text3)' }}>
-              <span style={{ fontSize: 32 }}>📋</span>
+              <ClipboardList size={32} />
               <p style={{ fontSize: 14 }}>{pt ? 'Nenhuma tarefa cadastrada' : 'No tasks yet'}</p>
               <button className="btn btn-primary btn-sm" onClick={() => setModalTask('new')}>+ {pt ? 'Nova Tarefa' : 'New Task'}</button>
             </div>
@@ -497,15 +501,15 @@ export default function TasksPage() {
                         onClick={() => setSelected(task.id === selected ? null : task.id)}>
                         <td style={{ width: 32 }}>
                           {hasKids
-                            ? <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 12 }} onClick={e => { e.stopPropagation(); toggle(task.id) }}>{expanded.has(task.id) ? '▾' : '▸'}</button>
+                            ? <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', display: 'flex', alignItems: 'center' }} onClick={e => { e.stopPropagation(); toggle(task.id) }}>{expanded.has(task.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button>
                             : <span style={{ width: 16, display: 'block' }} />}
                         </td>
                         <td style={{ paddingLeft: task.depth * 14 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                             <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums', minWidth: 28, flexShrink: 0 }}>{task.wbs}</span>
-                            {task.isMilestone && <span style={{ color: '#a855f7', fontSize: 11 }}>◆</span>}
-                            {task.isCritical && !task.isMilestone && <span style={{ color: '#f59e0b', fontSize: 11 }}>⚡</span>}
-                            {delayed && <span style={{ color: 'var(--red)', fontSize: 11 }}>⏰</span>}
+                            {task.isMilestone && <Diamond size={12} style={{ color: '#a855f7', flexShrink: 0 }} />}
+                            {task.isCritical && !task.isMilestone && <Zap size={12} style={{ color: '#f59e0b', flexShrink: 0 }} />}
+                            {delayed && <Clock size={12} style={{ color: 'var(--red)', flexShrink: 0 }} />}
                             <span style={{ fontSize: 12.5, fontWeight: task.isGroup ? 700 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>{task.name}</span>
                           </div>
                         </td>
@@ -525,9 +529,9 @@ export default function TasksPage() {
                         <td>
                           <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
                             <button title={pt ? 'Editar' : 'Edit'} onClick={() => setModalTask(task)}
-                              style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', color: '#60a5fa', borderRadius: 6, padding: '3px 7px', cursor: 'pointer', fontSize: 12 }}>✏️</button>
+                              style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', color: '#60a5fa', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><Pencil size={13} /></button>
                             <button title={pt ? 'Excluir' : 'Delete'} onClick={() => handleDelete(task.id)} disabled={deleting === task.id}
-                              style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171', borderRadius: 6, padding: '3px 7px', cursor: 'pointer', fontSize: 12 }}>🗑</button>
+                              style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><Trash2 size={13} /></button>
                           </div>
                         </td>
                       </tr>
@@ -546,9 +550,9 @@ export default function TasksPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-                {sel.isCritical && <span className="badge badge-yellow">⚡ {(t.priority as any).CRITICAL}</span>}
-                {sel.isMilestone && <span className="badge badge-purple">◆ Milestone</span>}
-                {isDelayed(sel) && <span className="badge badge-red">⏰ {(t.status as any).DELAYED}</span>}
+                {sel.isCritical && <span className="badge badge-yellow"><Zap size={11} /> {(t.priority as any).CRITICAL}</span>}
+                {sel.isMilestone && <span className="badge badge-purple"><Diamond size={11} /> Milestone</span>}
+                {isDelayed(sel) && <span className="badge badge-red"><Clock size={11} /> {(t.status as any).DELAYED}</span>}
               </div>
               <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{sel.name}</h3>
             </div>
@@ -591,8 +595,8 @@ export default function TasksPage() {
             </>
           )}
           <hr style={{ borderColor: 'var(--border)' }} />
-          <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={() => setModalTask(sel)}>
-            ✏️ {pt ? 'Editar Tarefa' : 'Edit Task'}
+          <button className="btn btn-primary btn-sm" style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={() => setModalTask(sel)}>
+            <Pencil size={14} /> {pt ? 'Editar Tarefa' : 'Edit Task'}
           </button>
         </div>
       )}

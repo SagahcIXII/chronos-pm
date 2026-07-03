@@ -6,6 +6,7 @@ import {
 } from 'recharts'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
+import { Calendar, AlertTriangle, CheckCircle2, Pin, ChevronUp, ChevronDown, Loader2, Plus, X } from 'lucide-react'
 
 interface Task {
   id: string; parentId: string | null; isGroup: boolean
@@ -369,8 +370,8 @@ export default function CurveSPage() {
           </div>
           {/* Seletor de data de referência */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px' }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>
-              📅 {lang === 'pt' ? 'Data de referência' : 'Reference date'}
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Calendar size={14} /> {lang === 'pt' ? 'Data de referência' : 'Reference date'}
             </span>
             <input
               type="date"
@@ -393,14 +394,14 @@ export default function CurveSPage() {
 
       {deviation < -5 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 8, fontSize: 13, color: '#fbbf24' }}>
-          ⚠ {lang === 'pt'
+          <AlertTriangle size={16} style={{ flexShrink: 0 }} /> {lang === 'pt'
             ? `Projeto com desvio de ${Math.abs(deviation)}pp abaixo do planejado.`
             : `Project is ${Math.abs(deviation)}pp behind plan.`}
         </div>
       )}
       {deviation > 5 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 8, fontSize: 13, color: '#4ade80' }}>
-          ✅ {lang === 'pt'
+          <CheckCircle2 size={16} style={{ flexShrink: 0 }} /> {lang === 'pt'
             ? `Projeto adiantado — ${deviation}pp acima do planejado.`
             : `Project ahead — ${deviation}pp above plan.`}
         </div>
@@ -432,10 +433,10 @@ export default function CurveSPage() {
           {/* Painel de Histórico Manual */}
           <div className="card">
             <div className="card-header" style={{cursor:'pointer'}} onClick={() => setShowSnapPanel(p => !p)}>
-              <h2 className="card-title">📌 {lang === 'pt' ? 'Histórico Manual de Progresso' : 'Manual Progress History'}</h2>
-              <span style={{fontSize:12,color:'var(--text3)',marginLeft:8}}>
+              <h2 className="card-title" style={{display:'inline-flex',alignItems:'center',gap:7}}><Pin size={15} /> {lang === 'pt' ? 'Histórico Manual de Progresso' : 'Manual Progress History'}</h2>
+              <span style={{fontSize:12,color:'var(--text3)',marginLeft:8,display:'inline-flex',alignItems:'center',gap:4}}>
                 {snapshots.length > 0 ? `${snapshots.length} ${lang==='pt'?'ponto(s) registrado(s)':'point(s) recorded'}` : lang==='pt'?'Nenhum ponto registrado':'No points recorded'}
-                {' '}— {showSnapPanel ? '▲' : '▼'}
+                {' '}{showSnapPanel ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               </span>
             </div>
             {showSnapPanel && (
@@ -469,8 +470,8 @@ export default function CurveSPage() {
                       value={snapNote} onChange={e=>setSnapNote(e.target.value)} style={{fontSize:13}}/>
                   </div>
                   <button className="btn btn-primary" onClick={addSnapshot} disabled={!snapDate||!snapExec}
-                    style={{padding:'8px 16px',fontSize:13,height:38,alignSelf:'end'}}>
-                    {snapSaving ? '⏳' : '+ '}{!snapSaving && (lang==='pt'?'Adicionar':'Add')}
+                    style={{padding:'8px 16px',fontSize:13,height:38,alignSelf:'end',display:'inline-flex',alignItems:'center',gap:6}}>
+                    {snapSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}{!snapSaving && (lang==='pt'?'Adicionar':'Add')}
                   </button>
                 </div>
                 {/* Lista de snapshots */}
@@ -483,14 +484,14 @@ export default function CurveSPage() {
                     </div>
                     {snapshots.map(s => (
                       <div key={s.date} style={{display:'grid',gridTemplateColumns:'120px 90px 1fr auto',gap:'0 12px',padding:'6px 0',borderBottom:'1px solid var(--border)',alignItems:'center'}}>
-                        <span style={{fontSize:13,color:'var(--text)',fontWeight:600}}>
-                          📌 {s.date.slice(8,10)}/{s.date.slice(5,7)}/{s.date.slice(0,4)}
+                        <span style={{fontSize:13,color:'var(--text)',fontWeight:600,display:'inline-flex',alignItems:'center',gap:6}}>
+                          <Pin size={12} style={{color:'var(--text3)'}} /> {s.date.slice(8,10)}/{s.date.slice(5,7)}/{s.date.slice(0,4)}
                         </span>
                         <span style={{fontSize:13,color:'#4ade80',fontWeight:700}}>{s.executed}%</span>
                         <span style={{fontSize:12,color:'var(--text3)'}}>{s.note || '—'}</span>
-                        <button onClick={()=>removeSnapshot(s.id)}
-                          style={{fontSize:12,color:'#f87171',background:'none',border:'none',cursor:'pointer',padding:'2px 6px'}}>
-                          ✕
+                        <button onClick={()=>removeSnapshot(s.id)} title={lang==='pt'?'Remover':'Remove'}
+                          style={{color:'#f87171',background:'none',border:'none',cursor:'pointer',padding:'2px 6px',display:'flex',alignItems:'center'}}>
+                          <X size={14} />
                         </button>
                       </div>
                     ))}

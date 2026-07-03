@@ -25,7 +25,14 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className="dark" suppressHydrationWarning>
+    <html lang="pt-BR" className="dark" data-theme="dark" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem('chronos_theme')||'dark';document.documentElement.setAttribute('data-theme',t);document.documentElement.classList.toggle('dark',t==='dark');}catch(e){}`,
+          }}
+        />
+      </head>
       <body className={`${dmSans.variable} ${syne.variable} font-sans bg-bg text-text antialiased`}>
         <Providers>
           {children}

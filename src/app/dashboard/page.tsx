@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
+import { AlertTriangle } from 'lucide-react'
 
 interface Task {
   id: string; parentId: string | null; isGroup: boolean; isMilestone: boolean
@@ -222,7 +223,7 @@ export default function DashboardPage() {
 
       {deviation < -3 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 8, fontSize: 13, color: '#fbbf24' }}>
-          ⚠ {lang === 'pt'
+          <AlertTriangle size={16} style={{ flexShrink: 0 }} /> {lang === 'pt'
             ? `Projeto com desvio de ${Math.abs(deviation)}% abaixo do planejado. Atenção ao caminho crítico.`
             : `Project is ${Math.abs(deviation)}% behind schedule. Watch critical path.`}
         </div>

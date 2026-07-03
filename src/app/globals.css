@@ -32,6 +32,41 @@
     --gantt-milestone: #a855f7;
     --gantt-row-h:     44px;
     --gantt-header-h:  48px;
+
+    /* Superfícies adaptativas (usadas por tabelas/gantt) */
+    --row-alt:  rgba(255,255,255,0.02);
+    --overlay:  rgba(0,0,0,0.7);
+  }
+
+  /* ── Tema claro ─────────────────────────────── */
+  [data-theme="light"] {
+    --bg:        #f4f6fb;
+    --surface:   #ffffff;
+    --surface2:  #eef2f9;
+    --surface3:  #e2e8f2;
+    --border:    #d7dfec;
+    --border2:   #c1ccde;
+    --text:      #16223a;
+    --text2:     #45566f;
+    --text3:     #7d8ba4;
+    --accent:    #2563eb;
+    --accent2:   #3b82f6;
+    --green:     #16a34a;
+    --green2:    #22c55e;
+    --yellow:    #d97706;
+    --red:       #dc2626;
+    --red2:      #ef4444;
+    --purple:    #9333ea;
+    --cyan:      #0891b2;
+
+    --gantt-planned:   #2563eb;
+    --gantt-executed:  #16a34a;
+    --gantt-delayed:   #dc2626;
+    --gantt-critical:  #d97706;
+    --gantt-milestone: #9333ea;
+
+    --row-alt:  rgba(15,23,42,0.03);
+    --overlay:  rgba(15,23,42,0.45);
   }
 
   * {

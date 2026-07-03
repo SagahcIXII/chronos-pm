@@ -3,6 +3,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useLang, LangSwitcher } from '@/lib/i18n'
 import { signOut, useSession } from 'next-auth/react'
+import { ThemeToggle } from '@/components/ThemeToggle'
+import { Plus, Pencil, X, Save, Loader2, AlertCircle, FolderKanban, ArrowLeft, LogOut } from 'lucide-react'
 
 interface UserRow {
   id: string; name: string; email: string; role: string; active: boolean
@@ -77,10 +79,10 @@ function UserModal({ user, onClose, onSave, lang }: {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, width: '100%', maxWidth: 480, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 24px 48px rgba(0,0,0,0.4)' }}>
         <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontFamily: 'Syne,sans-serif', fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>
-            {isEdit ? (lang === 'pt' ? '✏️ Editar Usuário' : '✏️ Edit User') : (lang === 'pt' ? '➕ Novo Usuário' : '➕ New User')}
+          <h2 style={{ fontFamily: 'Syne,sans-serif', fontSize: 18, fontWeight: 800, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            {isEdit ? <Pencil size={17} /> : <Plus size={18} />} {isEdit ? (lang === 'pt' ? 'Editar Usuário' : 'Edit User') : (lang === 'pt' ? 'Novo Usuário' : 'New User')}
           </h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 20 }}>✕</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><X size={20} /></button>
         </div>
         <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
@@ -113,13 +115,13 @@ function UserModal({ user, onClose, onSave, lang }: {
             </label>
           )}
           {error && (
-            <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#f87171' }}>❌ {error}</div>
+            <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#f87171', display: 'flex', alignItems: 'center', gap: 8 }}><AlertCircle size={15} /> {error}</div>
           )}
         </div>
         <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
           <button onClick={onClose} className="btn btn-secondary">{lang === 'pt' ? 'Cancelar' : 'Cancel'}</button>
-          <button onClick={handleSubmit} disabled={saving} className="btn btn-primary">
-            {saving ? '⏳' : (isEdit ? (lang === 'pt' ? '💾 Salvar' : '💾 Save') : (lang === 'pt' ? '✅ Criar' : '✅ Create'))}
+          <button onClick={handleSubmit} disabled={saving} className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+            {saving ? <Loader2 size={15} className="animate-spin" /> : (isEdit ? <Save size={15} /> : <Plus size={15} />)} {isEdit ? (lang === 'pt' ? 'Salvar' : 'Save') : (lang === 'pt' ? 'Criar' : 'Create')}
           </button>
         </div>
       </div>
@@ -182,10 +184,11 @@ export default function UsersPage() {
           <span style={{ fontSize: 13, color: 'var(--text3)' }}>{lang === 'pt' ? 'Gestão de Usuários' : 'User Management'}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button onClick={() => router.push('/projects')} className="btn btn-secondary">{lang === 'pt' ? '📁 Projetos' : '📁 Projects'}</button>
-          <button onClick={() => router.push('/dashboard')} className="btn btn-secondary">{lang === 'pt' ? '← Painel' : '← Dashboard'}</button>
+          <button onClick={() => router.push('/projects')} className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><FolderKanban size={15} /> {lang === 'pt' ? 'Projetos' : 'Projects'}</button>
+          <button onClick={() => router.push('/dashboard')} className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ArrowLeft size={15} /> {lang === 'pt' ? 'Painel' : 'Dashboard'}</button>
+          <ThemeToggle />
           <LangSwitcher />
-          <button onClick={() => signOut({ callbackUrl: '/auth/login' })} className="btn btn-secondary">{lang === 'pt' ? 'Sair' : 'Sign out'}</button>
+          <button onClick={() => signOut({ callbackUrl: '/auth/login' })} className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><LogOut size={15} /> {lang === 'pt' ? 'Sair' : 'Sign out'}</button>
         </div>
       </header>
 
@@ -199,11 +202,11 @@ export default function UsersPage() {
                 {loading ? '...' : `${users.length} ${lang === 'pt' ? 'usuários cadastrados' : 'registered users'}`}
               </p>
             </div>
-            <button onClick={() => setShowNew(true)} className="btn btn-primary">{lang === 'pt' ? '➕ Novo Usuário' : '➕ New User'}</button>
+            <button onClick={() => setShowNew(true)} className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Plus size={16} /> {lang === 'pt' ? 'Novo Usuário' : 'New User'}</button>
           </div>
 
           {loading ? (
-            <div style={{ textAlign: 'center', padding: 60, color: 'var(--text3)' }}>⏳ {lang === 'pt' ? 'Carregando...' : 'Loading...'}</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 60, color: 'var(--text3)' }}><Loader2 size={16} className="animate-spin" /> {lang === 'pt' ? 'Carregando...' : 'Loading...'}</div>
           ) : (
             <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>

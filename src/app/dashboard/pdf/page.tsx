@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
 import { buildOrderedTasks } from '@/lib/taskTree'
+import { Calendar, Info, AlertTriangle, ClipboardList, Zap, FileText, Printer, Loader2, Mail } from 'lucide-react'
 
 interface Task {
   id: string; parentId: string | null; isGroup: boolean; isCritical: boolean; isMilestone: boolean
@@ -206,9 +207,9 @@ export default function PDFPage() {
         }),
       })
       const data = await res.json()
-      if (res.ok) { setEmailStatus('success'); setEmailMsg(pt?'✅ Email enviado com sucesso!':'✅ Email sent successfully!') }
-      else { setEmailStatus('error'); setEmailMsg(`❌ ${data.error ?? 'Erro ao enviar'}`) }
-    } catch(e:any) { setEmailStatus('error'); setEmailMsg(`❌ ${e.message}`) }
+      if (res.ok) { setEmailStatus('success'); setEmailMsg(pt?'Email enviado com sucesso!':'Email sent successfully!') }
+      else { setEmailStatus('error'); setEmailMsg(`${data.error ?? 'Erro ao enviar'}`) }
+    } catch(e:any) { setEmailStatus('error'); setEmailMsg(`${e.message}`) }
   }
 
   const openReport = async () => {
@@ -286,7 +287,7 @@ export default function PDFPage() {
     const reportItemsHTML = reportItems.length > 0 ? `
       <div style="margin-top:5mm">
         <h2 style="color:#ef4444;border-bottom-color:#ef4444;font-size:11pt;font-weight:800;padding-bottom:2mm;margin-bottom:3mm;border-bottom:1px solid #ef4444">
-          ⚠ ${pt?'Desvios Críticos — Análise e Contramedidas':'Critical Deviations — Analysis & Countermeasures'}
+          ${pt?'Desvios Críticos — Análise e Contramedidas':'Critical Deviations — Analysis & Countermeasures'}
         </h2>
         ${reportItems.map((t, i) => {
           const ctx = itemContext[t.id] || ''
@@ -314,11 +315,11 @@ export default function PDFPage() {
               </div>
             </div>
             ${ctx ? `<div style="margin-bottom:2.5mm">
-              <div style="font-size:7.5pt;color:#9aabc4;text-transform:uppercase;letter-spacing:.5px;margin-bottom:1mm;font-weight:600">📋 ${pt?'Contexto / Causa':'Context / Cause'}</div>
+              <div style="font-size:7.5pt;color:#9aabc4;text-transform:uppercase;letter-spacing:.5px;margin-bottom:1mm;font-weight:600">${pt?'Contexto / Causa':'Context / Cause'}</div>
               <div style="font-size:8.5pt;color:#e8edf5;line-height:1.6;background:#111827;padding:2.5mm 3mm;border-radius:1mm;border-left:2px solid #3b82f6">${ctx}</div>
             </div>` : ''}
             ${act ? `<div>
-              <div style="font-size:7.5pt;color:#9aabc4;text-transform:uppercase;letter-spacing:.5px;margin-bottom:1mm;font-weight:600">⚡ ${pt?'Contramedida':'Countermeasure'}</div>
+              <div style="font-size:7.5pt;color:#9aabc4;text-transform:uppercase;letter-spacing:.5px;margin-bottom:1mm;font-weight:600">${pt?'Contramedida':'Countermeasure'}</div>
               <div style="font-size:8.5pt;color:#e8edf5;line-height:1.6;background:#111827;padding:2.5mm 3mm;border-radius:1mm;border-left:2px solid #22c55e">${act}</div>
             </div>` : ''}
           </div>`
@@ -486,7 +487,7 @@ export default function PDFPage() {
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8mm">
     <div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:3mm;margin-bottom:4mm">${curveKpisHTML}</div>
-      ${deviation<=-2?`<div style="margin-bottom:4mm;background:#2d1a1a;border-left:3px solid #ef4444;padding:3mm 4mm;border-radius:0 2mm 2mm 0"><p style="color:#fca5a5;font-size:8pt">⚠ ${pt?`Desvio de ${Math.abs(deviation)}% abaixo do planejado.`:`${Math.abs(deviation)}% behind schedule.`}</p></div>`:''}
+      ${deviation<=-2?`<div style="margin-bottom:4mm;background:#2d1a1a;border-left:3px solid #ef4444;padding:3mm 4mm;border-radius:0 2mm 2mm 0"><p style="color:#fca5a5;font-size:8pt">${pt?`Desvio de ${Math.abs(deviation)}% abaixo do planejado.`:`${Math.abs(deviation)}% behind schedule.`}</p></div>`:''}
       <h3>${pt?'Detalhamento Mensal':'Monthly Breakdown'}</h3>
       <table style="margin-top:2mm">
         <thead><tr>${tblCols.map(c=>`<th>${c}</th>`).join('')}</tr></thead>
@@ -519,9 +520,9 @@ export default function PDFPage() {
 
 <div class="noprint" style="position:fixed;bottom:20px;right:20px;display:flex;gap:10px;z-index:999">
   <button onclick="window.print()" style="background:#3b82f6;color:white;border:none;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(59,130,246,.4)">
-    🖨 ${pt?'Salvar como PDF (⌘+P)':'Save as PDF (⌘+P)'}
+    ${pt?'Salvar como PDF (⌘+P)':'Save as PDF (⌘+P)'}
   </button>
-  <button onclick="window.close()" style="background:#1e293b;color:#9aabc4;border:1px solid #2a3650;padding:12px 16px;border-radius:8px;font-size:14px;cursor:pointer">✕</button>
+  <button onclick="window.close()" style="background:#1e293b;color:#9aabc4;border:1px solid #2a3650;padding:12px 16px;border-radius:8px;font-size:14px;cursor:pointer">${pt?'Fechar':'Close'}</button>
 </div>
 </body></html>`
 
@@ -545,8 +546,8 @@ export default function PDFPage() {
           </div>
           {/* Seletor de data de referência */}
           <div style={{display:'flex',alignItems:'center',gap:10,background:'var(--surface2)',border:'1px solid var(--border)',borderRadius:8,padding:'8px 14px'}}>
-            <span style={{fontSize:12,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',whiteSpace:'nowrap'}}>
-              📅 {pt?'Data de referência':'Reference date'}
+            <span style={{fontSize:12,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',whiteSpace:'nowrap',display:'inline-flex',alignItems:'center',gap:6}}>
+              <Calendar size={14} /> {pt?'Data de referência':'Reference date'}
             </span>
             <input
               type="date"
@@ -566,16 +567,16 @@ export default function PDFPage() {
           </div>
         </div>
       </div>
-      <div className="alert alert-info">ℹ️ &nbsp;{pt?'Use o Chrome. Botão → nova aba → 🖨 Salvar como PDF · Paisagem · ✅ Gráficos em segundo plano':'Use Chrome. Button → new tab → 🖨 Save as PDF · Landscape · ✅ Background graphics'}</div>
+      <div className="alert alert-info" style={{display:'flex',alignItems:'center',gap:8}}><Info size={16} style={{flexShrink:0}} /> <span>{pt?'Use o Chrome. Botão → nova aba → Salvar como PDF · Paisagem · Gráficos em segundo plano':'Use Chrome. Button → new tab → Save as PDF · Landscape · Background graphics'}</span></div>
 
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
         <div className="card">
           <div className="card-header"><h2 className="card-title">{pt?'Conteúdo (Paisagem)':'Contents (Landscape)'}</h2></div>
           <div className="card-body" style={{display:'flex',flexDirection:'column',gap:10}}>
             {(pt
-              ?['📄 Pág. 1 — Capa executiva','📊 Pág. 2 — Resumo + KPIs + Fases','📈 Pág. 3 — Curva S (gráfico + tabela)','📋 Pág. 4 — Tabela de tarefas']
-              :['📄 Pg. 1 — Executive cover','📊 Pg. 2 — Summary + KPIs + Phases','📈 Pg. 3 — S-Curve (chart + table)','📋 Pg. 4 — Task table']
-            ).map(i=><span key={i} style={{fontSize:13,color:'var(--text2)'}}>{i}</span>)}
+              ?['Pág. 1 — Capa executiva','Pág. 2 — Resumo + KPIs + Fases','Pág. 3 — Curva S (gráfico + tabela)','Pág. 4 — Tabela de tarefas']
+              :['Pg. 1 — Executive cover','Pg. 2 — Summary + KPIs + Phases','Pg. 3 — S-Curve (chart + table)','Pg. 4 — Task table']
+            ).map(i=><span key={i} style={{fontSize:13,color:'var(--text2)',display:'inline-flex',alignItems:'center',gap:7}}><FileText size={13} style={{color:'var(--text3)',flexShrink:0}} /> {i}</span>)}
           </div>
         </div>
         <div className="card">
@@ -595,7 +596,7 @@ export default function PDFPage() {
       {tasksWithGap.length > 0 && (
         <div className="card">
           <div className="card-header">
-            <h2 className="card-title">⚠ {pt?'Desvios Críticos — Análise e Contramedidas':'Critical Deviations — Analysis & Countermeasures'}</h2>
+            <h2 className="card-title" style={{display:'inline-flex',alignItems:'center',gap:7}}><AlertTriangle size={15} /> {pt?'Desvios Críticos — Análise e Contramedidas':'Critical Deviations — Analysis & Countermeasures'}</h2>
           </div>
           <div className="card-body" style={{display:'flex',flexDirection:'column',gap:0}}>
             <p style={{fontSize:13,color:'var(--text3)',marginBottom:16}}>
@@ -650,8 +651,8 @@ export default function PDFPage() {
                     </div>
                     <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                       <div>
-                        <label style={{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',display:'block',marginBottom:6}}>
-                          📋 {pt?'Contexto / Causa':'Context / Cause'}
+                        <label style={{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:6,display:'inline-flex',alignItems:'center',gap:6}}>
+                          <ClipboardList size={13} /> {pt?'Contexto / Causa':'Context / Cause'}
                         </label>
                         <textarea
                           className="form-control"
@@ -663,8 +664,8 @@ export default function PDFPage() {
                         />
                       </div>
                       <div>
-                        <label style={{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',display:'block',marginBottom:6}}>
-                          ⚡ {pt?'Contramedida':'Countermeasure'}
+                        <label style={{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:6,display:'inline-flex',alignItems:'center',gap:6}}>
+                          <Zap size={13} /> {pt?'Contramedida':'Countermeasure'}
                         </label>
                         <textarea
                           className="form-control"
@@ -686,20 +687,21 @@ export default function PDFPage() {
 
       <div className="card">
         <div className="card-body" style={{textAlign:'center',padding:32,display:'flex',flexDirection:'column',alignItems:'center',gap:14}}>
-          <div style={{fontSize:48,opacity:0.3}}>📄</div>
+          <div style={{opacity:0.3,color:'var(--text)'}}><FileText size={44} /></div>
           <div>
             <h2 style={{fontFamily:'Syne,sans-serif',fontSize:18,fontWeight:800,color:'var(--text)',marginBottom:6}}>{pt?'Gerar Relatório Executivo — Paisagem':'Generate Executive Report — Landscape'}</h2>
             <p style={{color:'var(--text3)',maxWidth:480,margin:'0 auto',fontSize:13}}>{pt?'4 páginas A4 paisagem: capa · KPIs · Curva S com gráfico · tabela de tarefas':'4 A4 landscape pages: cover · KPIs · S-Curve with chart · task table'}</p>
           </div>
-          <button onClick={openReport} disabled={generating||loading} className="btn btn-primary" style={{padding:'12px 32px',fontSize:14}}>
-            {loading?(pt?'⏳ Carregando dados...':'⏳ Loading data...'):generating?(pt?'⏳ Abrindo...':'⏳ Opening...'):(pt?'🖨 Abrir Relatório → Salvar como PDF':'🖨 Open Report → Save as PDF')}
+          <button onClick={openReport} disabled={generating||loading} className="btn btn-primary" style={{padding:'12px 32px',fontSize:14,display:'inline-flex',alignItems:'center',gap:8}}>
+            {(loading||generating) ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
+            {loading?(pt?'Carregando dados...':'Loading data...'):generating?(pt?'Abrindo...':'Opening...'):(pt?'Abrir Relatório → Salvar como PDF':'Open Report → Save as PDF')}
           </button>
-          <p style={{fontSize:11,color:'var(--text3)'}}>{pt?'Chrome: ⌘+P → Salvar como PDF · A4 · Paisagem · ✅ Gráficos em segundo plano':'Chrome: ⌘+P → Save as PDF · A4 · Landscape · ✅ Background graphics'}</p>
+          <p style={{fontSize:11,color:'var(--text3)'}}>{pt?'Chrome: ⌘+P → Salvar como PDF · A4 · Paisagem · Gráficos em segundo plano':'Chrome: ⌘+P → Save as PDF · A4 · Landscape · Background graphics'}</p>
         </div>
       </div>
 
       <div className="card">
-        <div className="card-header"><h2 className="card-title">📧 {pt?'Enviar Relatório por Email':'Send Report by Email'}</h2></div>
+        <div className="card-header"><h2 className="card-title" style={{display:'inline-flex',alignItems:'center',gap:7}}><Mail size={15} /> {pt?'Enviar Relatório por Email':'Send Report by Email'}</h2></div>
         <div className="card-body" style={{display:'flex',flexDirection:'column',gap:14}}>
           <p style={{fontSize:13,color:'var(--text3)'}}>{pt?'Envie um resumo executivo do cronograma diretamente para os stakeholders do projeto.':'Send an executive schedule summary directly to project stakeholders.'}</p>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
@@ -718,11 +720,11 @@ export default function PDFPage() {
           </div>
           {emailStatus!=='idle'&&(
             <div style={{padding:'10px 14px',borderRadius:8,fontSize:13,fontWeight:500,background:emailStatus==='success'?'rgba(34,197,94,0.1)':emailStatus==='error'?'rgba(239,68,68,0.1)':'rgba(59,130,246,0.1)',border:`1px solid ${emailStatus==='success'?'rgba(34,197,94,0.3)':emailStatus==='error'?'rgba(239,68,68,0.3)':'rgba(59,130,246,0.3)'}`,color:emailStatus==='success'?'#4ade80':emailStatus==='error'?'#f87171':'#93c5fd'}}>
-              {emailStatus==='sending'?(pt?'⏳ Enviando email...':'⏳ Sending email...'):emailMsg}
+              {emailStatus==='sending'?(pt?'Enviando email...':'Sending email...'):emailMsg}
             </div>
           )}
-          <button onClick={sendEmail} disabled={emailStatus==='sending'} className="btn btn-primary" style={{alignSelf:'flex-start',padding:'11px 28px',fontSize:14}}>
-            {emailStatus==='sending'?(pt?'⏳ Enviando...':'⏳ Sending...'):(pt?'📧 Enviar Relatório por Email':'📧 Send Report by Email')}
+          <button onClick={sendEmail} disabled={emailStatus==='sending'} className="btn btn-primary" style={{alignSelf:'flex-start',padding:'11px 28px',fontSize:14,display:'inline-flex',alignItems:'center',gap:8}}>
+            {emailStatus==='sending'?<Loader2 size={15} className="animate-spin" />:<Mail size={15} />} {emailStatus==='sending'?(pt?'Enviando...':'Sending...'):(pt?'Enviar Relatório por Email':'Send Report by Email')}
           </button>
         </div>
       </div>

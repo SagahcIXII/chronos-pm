@@ -190,7 +190,7 @@ export function LangSwitcher() {
           background: lang===l ? 'var(--accent)' : 'transparent',
           color: lang===l ? 'white' : 'var(--text2)',
         }}>
-          {l==='pt' ? '🇧🇷 PT' : '🇺🇸 EN'}
+          {l==='pt' ? 'PT' : 'EN'}
         </button>
       ))}
     </div>

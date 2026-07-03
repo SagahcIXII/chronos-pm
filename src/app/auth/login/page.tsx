@@ -2,6 +2,7 @@
 import { useState, Suspense } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { ThemeToggle } from '@/components/ThemeToggle'
 
 function LoginForm() {
   const router = useRouter()
@@ -32,6 +33,7 @@ function LoginForm() {
       minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: 'var(--bg)', padding: 16,
     }}>
+      <div style={{ position: 'absolute', top: 20, right: 20 }}><ThemeToggle /></div>
       <div style={{
         width: '100%', maxWidth: 400, background: 'var(--surface)',
         border: '1px solid var(--border)', borderRadius: 16, padding: 40,

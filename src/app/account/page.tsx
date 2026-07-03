@@ -3,6 +3,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useLang, LangSwitcher } from '@/lib/i18n'
 import { signOut, useSession } from 'next-auth/react'
+import { ThemeToggle } from '@/components/ThemeToggle'
+import { ArrowLeft, KeyRound, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 
 const INPUT = {
   width: '100%', background: 'var(--surface2)', border: '1px solid var(--border)',
@@ -58,7 +60,8 @@ export default function AccountPage() {
           <span style={{ fontSize: 13, color: 'var(--text3)' }}>{lang === 'pt' ? 'Minha Conta' : 'My Account'}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button onClick={() => router.push('/dashboard')} className="btn btn-secondary">{lang === 'pt' ? '← Painel' : '← Dashboard'}</button>
+          <button onClick={() => router.push('/dashboard')} className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ArrowLeft size={15} /> {lang === 'pt' ? 'Painel' : 'Dashboard'}</button>
+          <ThemeToggle />
           <LangSwitcher />
         </div>
       </header>
@@ -89,16 +92,16 @@ export default function AccountPage() {
             </div>
 
             {error && (
-              <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#f87171' }}>❌ {error}</div>
+              <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#f87171', display: 'flex', alignItems: 'center', gap: 8 }}><AlertCircle size={15} /> {error}</div>
             )}
             {ok && (
-              <div style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#4ade80' }}>
-                ✅ {lang === 'pt' ? 'Senha alterada com sucesso.' : 'Password changed successfully.'}
+              <div style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#4ade80', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <CheckCircle2 size={15} /> {lang === 'pt' ? 'Senha alterada com sucesso.' : 'Password changed successfully.'}
               </div>
             )}
 
-            <button onClick={submit} disabled={saving} className="btn btn-primary" style={{ alignSelf: 'flex-start' }}>
-              {saving ? '⏳' : (lang === 'pt' ? '🔑 Salvar nova senha' : '🔑 Save new password')}
+            <button onClick={submit} disabled={saving} className="btn btn-primary" style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              {saving ? <Loader2 size={15} className="animate-spin" /> : <KeyRound size={15} />} {lang === 'pt' ? 'Salvar nova senha' : 'Save new password'}
             </button>
           </div>
         </div>

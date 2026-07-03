@@ -4,6 +4,7 @@ import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
 import { useSession } from 'next-auth/react'
 import { buildOrderedTasks } from '@/lib/taskTree'
+import { Search, Hand, ChevronDown, ChevronRight, Diamond, Zap, Clock } from 'lucide-react'
 
 type Scale = 'days' | 'weeks' | 'months'
 
@@ -180,10 +181,13 @@ export default function GanttPage() {
             </button>
           ))}
         </div>
-        <input className="form-control" style={{ height: 32, width: 200, fontSize: 12 }} placeholder={`🔍 ${g.search}`} value={search} onChange={e => setSearch(e.target.value)} />
+        <div style={{ position: 'relative', width: 200 }}>
+          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)' }} />
+          <input className="form-control" style={{ height: 32, width: '100%', fontSize: 12, paddingLeft: 30 }} placeholder={g.search} value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
         <button className="btn btn-secondary btn-sm" onClick={() => setExpanded(new Set(tasks.filter(t => t.isGroup).map(t => t.id)))}>{g.expandAll}</button>
         <button className="btn btn-secondary btn-sm" onClick={() => setExpanded(new Set())}>{g.collapseAll}</button>
-        {editable && <span style={{ fontSize: 11, color: 'var(--text3)' }}>✋ {lang === 'pt' ? 'Arraste as barras para ajustar datas' : 'Drag bars to adjust dates'}</span>}
+        {editable && <span style={{ fontSize: 11, color: 'var(--text3)', display: 'inline-flex', alignItems: 'center', gap: 5 }}><Hand size={12} /> {lang === 'pt' ? 'Arraste as barras para ajustar datas' : 'Drag bars to adjust dates'}</span>}
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', gap: 12, fontSize: 11.5, color: 'var(--text3)', alignItems: 'center' }}>
           {[{ c: '#3b82f6', l: g.legendPlanned }, { c: '#22c55e', l: g.legendExecuted }, { c: '#ef4444', l: g.legendDelayed }, { c: '#f59e0b', l: g.legendCritical }, { c: '#a855f7', l: g.legendMilestone }].map(x => (
@@ -215,10 +219,10 @@ export default function GanttPage() {
                 <div key={task.id}
                   style={{ display: 'grid', gridTemplateColumns: '32px 1fr 72px 72px 44px', paddingLeft: 8 + task.depth * 16, paddingRight: 12, minHeight: ROW_H, alignItems: 'center', borderBottom: '1px solid var(--border)', cursor: 'pointer', background: task.id === selected ? 'rgba(59,130,246,0.1)' : task.isGroup ? 'var(--surface2)' : 'transparent' }}
                   onClick={() => setSelected(task.id === selected ? null : task.id)}>
-                  <div>{hasKids ? <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 12 }} onClick={e => { e.stopPropagation(); toggle(task.id) }}>{expanded.has(task.id) ? '▾' : '▸'}</button> : <span style={{ width: 16, display: 'block' }} />}</div>
+                  <div>{hasKids ? <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', display: 'flex', alignItems: 'center' }} onClick={e => { e.stopPropagation(); toggle(task.id) }}>{expanded.has(task.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button> : <span style={{ width: 16, display: 'block' }} />}</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
-                    {task.isMilestone && <span style={{ color: '#a855f7', fontSize: 11 }}>◆</span>}
-                    {task.isCritical && !task.isMilestone && <span style={{ color: '#f59e0b', fontSize: 11 }}>⚡</span>}
+                    {task.isMilestone && <Diamond size={12} style={{ color: '#a855f7', flexShrink: 0 }} />}
+                    {task.isCritical && !task.isMilestone && <Zap size={12} style={{ color: '#f59e0b', flexShrink: 0 }} />}
                     <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{task.wbs}</span>
                     <span style={{ fontSize: 12.5, fontWeight: task.isGroup ? 700 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.name}</span>
                   </div>
@@ -240,7 +244,7 @@ export default function GanttPage() {
               <svg width={totalW} height={Math.max(visible.length * ROW_H, 200)} style={{ display: 'block' }}>
                 <defs><marker id="arr" viewBox="0 0 8 8" refX={7} refY={4} markerWidth={5} markerHeight={5} orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--text3)" /></marker></defs>
                 {cols.map(col => <line key={col.key + 'g'} x1={col.x} y1={0} x2={col.x} y2={visible.length * ROW_H} stroke="var(--border)" strokeWidth={0.5} strokeDasharray="2,3" />)}
-                {visible.map((_, i) => i % 2 === 1 && <rect key={i} x={0} y={i * ROW_H} width={totalW} height={ROW_H} fill="rgba(255,255,255,0.012)" />)}
+                {visible.map((_, i) => i % 2 === 1 && <rect key={i} x={0} y={i * ROW_H} width={totalW} height={ROW_H} fill="var(--row-alt)" />)}
                 {visible.map((task, i) => task.id === selected && <rect key={task.id + 's'} x={0} y={i * ROW_H} width={totalW} height={ROW_H} fill="rgba(59,130,246,0.08)" />)}
                 {visible.map((task, i) => (task.predecessors ?? []).map(p => {
                   const predTask = tasks.find(t => t.id === p.predecessor.id)
@@ -300,9 +304,9 @@ export default function GanttPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-                    {sel.isCritical && <span className="badge badge-yellow">⚡ {g.panelCritical}</span>}
-                    {sel.isMilestone && <span className="badge badge-purple">◆ {g.panelMilestone}</span>}
-                    {isDelayed(sel) && <span className="badge badge-red">⏰ {g.panelDelayed}</span>}
+                    {sel.isCritical && <span className="badge badge-yellow"><Zap size={11} /> {g.panelCritical}</span>}
+                    {sel.isMilestone && <span className="badge badge-purple"><Diamond size={11} /> {g.panelMilestone}</span>}
+                    {isDelayed(sel) && <span className="badge badge-red"><Clock size={11} /> {g.panelDelayed}</span>}
                   </div>
                   <h3 style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)', lineHeight: 1.3 }}>{sel.name}</h3>
                 </div>

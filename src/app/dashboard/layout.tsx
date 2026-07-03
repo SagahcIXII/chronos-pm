@@ -4,6 +4,8 @@ import { usePathname, useRouter } from 'next/navigation'
 import { signOut, useSession } from 'next-auth/react'
 import { useLang, LangSwitcher } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
+import { ThemeToggle } from '@/components/ThemeToggle'
+import { Users, KeyRound, LogOut, ArrowLeftRight, LayoutDashboard, BarChart3, TrendingUp, ListChecks, FileText } from 'lucide-react'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const path = usePathname()
@@ -13,11 +15,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { activeProject, loading } = useProject()
 
   const nav = [
-    { href:'/dashboard',        label: t.nav.dashboard },
-    { href:'/dashboard/gantt',  label: t.nav.gantt     },
-    { href:'/dashboard/curves', label: t.nav.curves    },
-    { href:'/dashboard/tasks',  label: t.nav.tasks     },
-    { href:'/dashboard/pdf',    label: t.nav.pdf       },
+    { href:'/dashboard',        label: t.nav.dashboard, Icon: LayoutDashboard },
+    { href:'/dashboard/gantt',  label: t.nav.gantt,     Icon: BarChart3       },
+    { href:'/dashboard/curves', label: t.nav.curves,    Icon: TrendingUp      },
+    { href:'/dashboard/tasks',  label: t.nav.tasks,     Icon: ListChecks      },
+    { href:'/dashboard/pdf',    label: t.nav.pdf,       Icon: FileText        },
   ]
 
   const activeLabel = nav.find(n =>
@@ -82,7 +84,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
             <span style={{fontSize:11,color:activeProject.color,fontWeight:700}}>{activeProject.progress}%</span>
           </div>
-          <div style={{fontSize:10,color:'var(--text3)',marginTop:4}}>↗ {lang==='pt'?'Trocar projeto':'Switch project'}</div>
+          <div style={{fontSize:10,color:'var(--text3)',marginTop:4,display:'flex',alignItems:'center',gap:4}}><ArrowLeftRight size={11} /> {lang==='pt'?'Trocar projeto':'Switch project'}</div>
         </button>
 
         {/* Nav */}
@@ -96,6 +98,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   background:active?'rgba(59,130,246,0.1)':'transparent',
                   borderLeft:active?`2px solid ${activeProject.color}`:'2px solid transparent',
                   transition:'all 0.15s'}}>
+                <item.Icon size={16} />
                 {item.label}
               </Link>
             )
@@ -105,7 +108,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               style={{display:'flex',alignItems:'center',gap:10,padding:'9px 16px',cursor:'pointer',width:'100%',
                 color:'var(--text2)',background:'none',border:'none',borderLeft:'2px solid transparent',
                 fontSize:13.5,textAlign:'left',fontFamily:'inherit'}}>
-              👥 {lang==='pt'?'Usuários':'Users'}
+              <Users size={16} /> {lang==='pt'?'Usuários':'Users'}
             </button>
           )}
         </nav>
@@ -121,11 +124,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <p style={{fontSize:10.5,color:'var(--text3)'}}>{(session?.user as any)?.role??'Admin'}</p>
             </div>
             <button onClick={()=>signOut({callbackUrl:'/auth/login'})}
-              style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:16,padding:4,flexShrink:0}} title="Sair">→</button>
+              style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',display:'flex',alignItems:'center',padding:4,flexShrink:0}} title="Sair"><LogOut size={16} /></button>
           </div>
           <button onClick={()=>router.push('/account')}
-            style={{marginTop:8,width:'100%',background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:11.5,textAlign:'left',padding:'2px 0',fontFamily:'inherit'}}>
-            🔑 {lang==='pt'?'Trocar senha':'Change password'}
+            style={{marginTop:8,width:'100%',background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:11.5,textAlign:'left',padding:'2px 0',fontFamily:'inherit',display:'flex',alignItems:'center',gap:5}}>
+            <KeyRound size={13} /> {lang==='pt'?'Trocar senha':'Change password'}
           </button>
         </div>
       </aside>
@@ -137,6 +140,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <span style={{width:1,height:20,background:'var(--border)'}}/>
           <span style={{fontSize:12,color:'var(--text3)'}}>{activeProject.code} · {lang==='pt'?activeProject.name.split('—')[0].trim():activeProject.nameEn.split('—')[0].trim()}</span>
           <span style={{flex:1}}/>
+          <ThemeToggle />
           <LangSwitcher />
           <span style={{width:1,height:20,background:'var(--border)'}}/>
           <span className={`badge ${activeProject.status==='IN_PROGRESS'?'badge-blue':activeProject.status==='COMPLETED'?'badge-green':'badge-gray'}`}>
