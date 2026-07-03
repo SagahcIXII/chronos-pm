@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
+import { buildOrderedTasks } from '@/lib/taskTree'
 
 interface Task {
   id: string; parentId: string | null; isGroup: boolean; isCritical: boolean; isMilestone: boolean
@@ -371,10 +372,10 @@ export default function PDFPage() {
 
     // ── Tabela de tarefas ─────────────────────────────────────────────────────
     const tblTask = pt?['Tarefa','Responsável','Início','Término','%','Status']:['Task','Responsible','Start','End','%','Status']
-    const tasksHTML = tasks.map(task => {
+    const tasksHTML = buildOrderedTasks(tasks).map(task => {
       const color = statusColor(task.status)
       return `<tr style="background:${task.isGroup?'#1a2235':'transparent'}">
-        <td style="padding:2.5mm 2mm;border-bottom:1px solid #1e293b;color:${task.isGroup?'#e8edf5':'#c8d5e8'};font-weight:${task.isGroup?700:400};font-size:8pt">${task.name}</td>
+        <td style="padding:2.5mm 2mm;border-bottom:1px solid #1e293b;color:${task.isGroup?'#e8edf5':'#c8d5e8'};font-weight:${task.isGroup?700:400};font-size:8pt;padding-left:${2 + task.depth*4}mm"><span style="color:#5a6a84;font-weight:700;margin-right:2mm">${task.wbs}</span>${task.name}</td>
         <td style="padding:2.5mm 2mm;border-bottom:1px solid #1e293b;color:#9aabc4;font-size:7.5pt">${task.responsible||'—'}</td>
         <td style="padding:2.5mm 2mm;border-bottom:1px solid #1e293b;color:#9aabc4;font-size:7.5pt">${fmtShort(task.plannedStart)}</td>
         <td style="padding:2.5mm 2mm;border-bottom:1px solid #1e293b;color:#9aabc4;font-size:7.5pt">${fmtShort(task.plannedEnd)}</td>

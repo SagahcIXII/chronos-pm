@@ -12,16 +12,17 @@ export interface TreeTaskBase {
   id: string
   parentId: string | null
   isGroup: boolean
-  order: number
+  order?: number
   name: string
-  plannedStart?: string | null
+  plannedStart?: string | Date | null
 }
 
 export type OrderedTask<T> = T & { wbs: string; depth: number }
 
-function startValue(s?: string | null): number {
+function startValue(s?: string | Date | null): number {
   if (!s) return Number.MAX_SAFE_INTEGER
-  const t = new Date(s.includes('T') ? s : s + 'T12:00:00').getTime()
+  const d = s instanceof Date ? s : new Date(s.includes('T') ? s : s + 'T12:00:00')
+  const t = d.getTime()
   return isNaN(t) ? Number.MAX_SAFE_INTEGER : t
 }
 
@@ -38,7 +39,8 @@ export function buildOrderedTasks<T extends TreeTaskBase>(tasks: T[]): OrderedTa
     arr.sort((a, b) => {
       const sa = startValue(a.plannedStart), sb = startValue(b.plannedStart)
       if (sa !== sb) return sa - sb
-      if (a.order !== b.order) return a.order - b.order
+      const oa = a.order ?? 0, ob = b.order ?? 0
+      if (oa !== ob) return oa - ob
       return a.name.localeCompare(b.name)
     })
 

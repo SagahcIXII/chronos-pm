@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { formatDateBR, statusLabel, priorityLabel, isTaskDelayed } from '@/lib/schedule'
 import { requireUser, assertProjectAccess, accessErrorResponse } from '@/lib/access'
+import { buildOrderedTasks } from '@/lib/taskTree'
 import * as XLSX from 'xlsx'
 
 export async function GET(req: NextRequest) {
@@ -31,22 +32,22 @@ export async function GET(req: NextRequest) {
   const wb = XLSX.utils.book_new()
 
   // ── Aba: Cronograma ──
+  const orderedTasks = buildOrderedTasks(tasks)
   const cronRows = [
     ['CHRONOS PM — CRONOGRAMA DO PROJETO'],
     [project.name],
     [project.code, `Emitido em: ${formatDateBR(new Date())}`],
     [],
-    ['Nível', 'WBS', 'Tarefa', 'Responsável', 'Início Plan.', 'Término Plan.',
+    ['WBS', 'Tarefa', 'Responsável', 'Início Plan.', 'Término Plan.',
      'Início Real', 'Término Real', 'Dur. Plan. (d)', 'Progresso (%)', 'Status', 'Prioridade',
      'Crítica', 'Marco', 'Atrasada'],
-    ...tasks.map((t, i) => {
+    ...orderedTasks.map((t) => {
       const durationPlan = t.plannedStart && t.plannedEnd
         ? Math.round((new Date(t.plannedEnd).getTime() - new Date(t.plannedStart).getTime()) / 86400000)
         : ''
       return [
-        t.level,
-        `${i + 1}`,
-        '  '.repeat(t.level) + t.name,
+        t.wbs,
+        '  '.repeat(t.depth) + t.name,
         t.responsible || '',
         formatDateBR(t.plannedStart),
         formatDateBR(t.plannedEnd),
@@ -65,7 +66,7 @@ export async function GET(req: NextRequest) {
 
   const wsCron = XLSX.utils.aoa_to_sheet(cronRows)
   wsCron['!cols'] = [
-    { wch: 6 }, { wch: 6 }, { wch: 45 }, { wch: 22 }, { wch: 12 }, { wch: 12 },
+    { wch: 8 }, { wch: 45 }, { wch: 22 }, { wch: 12 }, { wch: 12 },
     { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 12 },
     { wch: 8 }, { wch: 8 }, { wch: 10 },
   ]
