@@ -51,6 +51,70 @@ export function projectProgress(tasks: ProgressTask[]): number {
   )
 }
 
+/**
+ * Planejado acumulado (%) na data — metodologia linear:
+ * diasDecorridos ÷ diasTotais do projeto, limitado a 0–100.
+ */
+export function plannedLinearAt(pointISO: string, projectStartISO: string, projectEndISO: string): number {
+  const day = (s: string) => Date.parse(s.slice(0, 10) + 'T00:00:00Z')
+  const total = day(projectEndISO) - day(projectStartISO)
+  if (!(total > 0)) return 0
+  const elapsed = day(pointISO) - day(projectStartISO)
+  return Math.min(100, Math.max(0, Math.round((elapsed / total) * 100)))
+}
+
+export interface MonthlyCurveRow {
+  period: string                    // rótulo do mês (ex.: "mar. de 25" / "Mar 25")
+  plannedCumulative: number
+  executedCumulative: number | null // null = mês futuro
+  deviation: number | null
+  isCurrent: boolean                // mês que contém a data de referência
+  isFuture: boolean
+}
+
+/**
+ * Curva S mensal (Relatório PDF e e-mail). Cada mês é avaliado no seu último
+ * dia — ou na data de referência, no mês corrente. Datas tratadas em UTC
+ * para dar o mesmo resultado no navegador e no servidor.
+ */
+export function buildMonthlyCurve(
+  tasks: ProgressTask[],
+  projectStartISO: string,
+  projectEndISO: string,
+  refISO: string,
+  lang: string
+): MonthlyCurveRow[] {
+  const leaves = tasks.filter(t => !t.isGroup)
+  if (!leaves.length || !projectStartISO || !projectEndISO) return []
+
+  const ref = refISO.slice(0, 10)
+  const [sy, sm] = projectStartISO.slice(0, 7).split('-').map(Number)
+  const [ey, em] = projectEndISO.slice(0, 7).split('-').map(Number)
+  const lastMonthIdx = ey * 12 + (em - 1) + 1 // inclui um mês após o término
+  const rows: MonthlyCurveRow[] = []
+
+  for (let idx = sy * 12 + (sm - 1); idx <= lastMonthIdx; idx++) {
+    const y = Math.floor(idx / 12), m = idx % 12
+    const firstISO = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10)
+    const lastISO = new Date(Date.UTC(y, m + 1, 0)).toISOString().slice(0, 10)
+    const isFuture = firstISO > ref
+    const isCurrent = !isFuture && lastISO >= ref
+    const pointISO = isCurrent ? ref : lastISO
+
+    const plannedCumulative = plannedLinearAt(pointISO, projectStartISO, projectEndISO)
+    const executedCumulative = isFuture ? null : executedAt(leaves, pointISO)
+    rows.push({
+      period: new Date(Date.UTC(y, m, 1)).toLocaleDateString(lang === 'pt' ? 'pt-BR' : 'en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' }),
+      plannedCumulative,
+      executedCumulative,
+      deviation: executedCumulative === null ? null : executedCumulative - plannedCumulative,
+      isCurrent,
+      isFuture,
+    })
+  }
+  return rows
+}
+
 /** Executado acumulado (%) na data `pointISO` ('YYYY-MM-DD') — ponto da Curva S. */
 export function executedAt(tasks: ProgressTask[], pointISO: string): number {
   const point = pointISO.slice(0, 10)

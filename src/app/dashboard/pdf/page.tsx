@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
-import { projectProgress, executedAt } from '@/lib/progress'
+import { projectProgress, buildMonthlyCurve } from '@/lib/progress'
 import { buildOrderedTasks } from '@/lib/taskTree'
 import { Calendar, Info, AlertTriangle, ClipboardList, Zap, FileText, Printer, Loader2, Mail } from 'lucide-react'
 
@@ -37,58 +37,7 @@ const fmtShort = (s?: string | null) => {
   return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`
 }
 
-// ── Metodologia linear: planejado = diasDecorridos/diasTotais ─────────────────
-function calcPlannedLinear(pointDate: Date, projectStart: string, projectEnd: string): number {
-  const start = new Date(projectStart)
-  const end = new Date(projectEnd)
-  const totalDays = (end.getTime() - start.getTime()) / 86400000
-  if (totalDays <= 0) return 0
-  const elapsed = (pointDate.getTime() - start.getTime()) / 86400000
-  return Math.min(100, Math.max(0, Math.round((elapsed / totalDays) * 100)))
-}
-
-// ── Executado: fórmula oficial em '@/lib/progress' (executedAt) ──────────────
-
-// ── Curva S mensal para o PDF ─────────────────────────────────────────────────
-function buildCurve(tasks: Task[], projectStart: string, projectEnd: string, lang: string, refISO: string = todayISO) {
-  const leaves = tasks.filter(t => !t.isGroup)
-  if (!leaves.length || !projectStart || !projectEnd) return []
-
-  const start = new Date(projectStart.slice(0,7) + '-01')
-  const end = new Date(projectEnd.slice(0,7) + '-01')
-  end.setMonth(end.getMonth() + 1)
-
-  const rows: any[] = []
-  const cur = new Date(start)
-
-  while (cur <= end) {
-    const endOfMonth = new Date(cur.getFullYear(), cur.getMonth() + 1, 0)
-    const endStr = endOfMonth.toISOString().slice(0, 10)
-    const label = cur.toLocaleDateString(lang === 'pt' ? 'pt-BR' : 'en-US', { month: 'short', year: '2-digit' })
-
-    const refDateObj = new Date(refISO)
-    const isFuture = new Date(cur.getFullYear(), cur.getMonth(), 1) > refDateObj
-    const isCurrent = !isFuture && endOfMonth >= refDateObj
-    const refDate = isCurrent ? refDateObj : endOfMonth
-    const refDateStr = refDate.toISOString().slice(0, 10)
-
-    const plannedCumulative = calcPlannedLinear(refDate, projectStart, projectEnd)
-    const executedCumulative = !isFuture ? executedAt(leaves, refDateStr) : null
-    const deviation = !isFuture && executedCumulative !== null ? executedCumulative - plannedCumulative : null
-
-    rows.push({ period: label, plannedCumulative, executedCumulative, deviation, isCurrent, isFuture })
-    cur.setMonth(cur.getMonth() + 1)
-  }
-
-  // Monotonicidade
-  for (let i = 1; i < rows.length; i++) {
-    if (rows[i].plannedCumulative < rows[i-1].plannedCumulative) {
-      rows[i].plannedCumulative = rows[i-1].plannedCumulative
-    }
-  }
-
-  return rows
-}
+// Curva S mensal: buildMonthlyCurve em '@/lib/progress' (mesma do e-mail)
 
 export default function PDFPage() {
   const { lang } = useLang()
@@ -146,7 +95,7 @@ export default function PDFPage() {
   const totalProgress = leaves.length ? projectProgress(leaves) : ap.progress ?? 0
 
   // Curva S com metodologia linear
-  const curveData = buildCurve(tasks, pStart, pEnd, lang, refDateISO)
+  const curveData = buildMonthlyCurve(tasks, pStart, pEnd, refDateISO, lang)
   const currentRow = curveData.find(d => d.isCurrent)
   const lastExecRow = currentRow ?? [...curveData].reverse().find((d:any) => d.executedCumulative !== null)
   const execVal = lastExecRow?.executedCumulative ?? 0
@@ -176,7 +125,10 @@ export default function PDFPage() {
     [pt?'Início':'Start', fmtDate(pStart, lang)],
     [pt?'Término':'End', fmtDate(pEnd, lang)],
     [pt?'Avanço':'Progress', `${totalProgress}%`],
-    ['Status', pt?'Em Andamento':'In Progress'],
+    ['Status', (pt
+      ? {IN_PROGRESS:'Em Andamento',COMPLETED:'Concluído',NOT_STARTED:'Não Iniciado',ON_HOLD:'Pausado'}
+      : {IN_PROGRESS:'In Progress',COMPLETED:'Completed',NOT_STARTED:'Not Started',ON_HOLD:'On Hold'}
+    )[activeProject.status as string] ?? activeProject.status],
   ]
 
   const sendEmail = async () => {
@@ -187,11 +139,11 @@ export default function PDFPage() {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({
+          projectId: activeProject.id,
           to: emailTo.split(',').map((e:string)=>e.trim()).filter(Boolean),
           subject: emailSubject || `${pt?'Relatório de Cronograma':'Schedule Report'} — ${activeProject.code}`,
-          projectCode: activeProject.code,
-          projectName: activeProject.name,
           senderName: senderName || ap.responsible || 'Chronos PM',
+          refDate: refDateISO,
           lang,
         }),
       })
