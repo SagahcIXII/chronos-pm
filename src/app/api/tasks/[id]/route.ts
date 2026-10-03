@@ -1,10 +1,36 @@
 // src/app/api/tasks/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { z } from 'zod'
 import { computeWeightedProgress } from '@/lib/schedule'
-import { requireUser, assertTaskAccess, accessErrorResponse } from '@/lib/access'
+import { requireUser, assertTaskAccess, assertTaskRelations, accessErrorResponse } from '@/lib/access'
 
 type Params = { params: { id: string } }
+
+// Campos editáveis de uma tarefa. Qualquer outra chave (ex.: projectId, id,
+// createdAt) é descartada pelo zod — impede mover a tarefa para outro projeto.
+const optionalDate = z.string().nullable().optional()
+const UpdateTaskSchema = z.object({
+  parentId: z.string().nullable().optional(),
+  name: z.string().min(2).max(300).optional(),
+  description: z.string().max(5000).nullable().optional(),
+  responsible: z.string().max(200).nullable().optional(),
+  weight: z.number().min(0).max(100).optional(),
+  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
+  status: z.enum(['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED', 'ON_HOLD', 'DELAYED']).optional(),
+  progress: z.number().min(0).max(100).optional(),
+  plannedStart: optionalDate,
+  plannedEnd: optionalDate,
+  actualStart: optionalDate,
+  actualEnd: optionalDate,
+  isMilestone: z.boolean().optional(),
+  isCritical: z.boolean().optional(),
+  isGroup: z.boolean().optional(),
+  level: z.number().int().min(0).optional(),
+  order: z.number().int().optional(),
+  observations: z.string().max(5000).nullable().optional(),
+  predecessorIds: z.array(z.string()).optional(),
+})
 
 // GET /api/tasks/[id]
 export async function GET(_req: NextRequest, { params }: Params) {
@@ -35,17 +61,27 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const user = await requireUser()
     const { task: current } = await assertTaskAccess(params.id, user, { write: true })
 
-    const body = await req.json()
-    const { predecessorIds, ...updates } = body
+    const parsed = UpdateTaskSchema.safeParse(await req.json())
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Dados inválidos', details: parsed.error.errors }, { status: 422 })
+    }
+    const { predecessorIds, ...updates } = parsed.data
 
-    // Normaliza datas.
-    const dateFields = ['plannedStart', 'plannedEnd', 'actualStart', 'actualEnd']
+    await assertTaskRelations(current.projectId, params.id, { parentId: updates.parentId, predecessorIds })
+
+    // Normaliza datas ('' ou null → limpa o campo).
+    const dateFields = ['plannedStart', 'plannedEnd', 'actualStart', 'actualEnd'] as const
     const normalizedUpdates: any = { ...updates }
-    dateFields.forEach(field => {
-      if (updates[field] !== undefined) {
-        normalizedUpdates[field] = updates[field] ? new Date(updates[field]) : null
+    for (const field of dateFields) {
+      const v = updates[field]
+      if (v === undefined) continue
+      if (!v) { normalizedUpdates[field] = null; continue }
+      const d = new Date(v)
+      if (isNaN(d.getTime())) {
+        return NextResponse.json({ error: `Data inválida em ${field}` }, { status: 422 })
       }
-    })
+      normalizedUpdates[field] = d
+    }
 
     const task = await prisma.task.update({
       where: { id: params.id },

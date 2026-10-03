@@ -16,6 +16,7 @@ import {
 import { ptBR } from 'date-fns/locale'
 import type { Task } from '@prisma/client'
 import type { CurveSDataPoint, DashboardKPIs, GanttBarData, TaskWithRelations } from '@/types'
+import { projectProgress } from '@/lib/progress'
 
 // ─── Dias úteis ───────────────────────────────────────────
 
@@ -53,12 +54,9 @@ export function addWorkingDays(start: Date, days: number): Date {
 
 // ─── Progresso ponderado ──────────────────────────────────
 
+// Delegado à fórmula oficial em '@/lib/progress'.
 export function computeWeightedProgress(tasks: Task[]): number {
-  const leaves = tasks.filter(t => !t.isGroup)
-  if (!leaves.length) return 0
-  const totalWeight = leaves.reduce((s, t) => s + (t.weight || 1), 0)
-  const done = leaves.reduce((s, t) => s + ((t.weight || 1) * t.progress) / 100, 0)
-  return totalWeight ? Math.round((done / totalWeight) * 100) : 0
+  return projectProgress(tasks)
 }
 
 // ─── Detecção de atraso ───────────────────────────────────

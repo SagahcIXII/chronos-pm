@@ -372,6 +372,7 @@ export default function TasksPage() {
   const [deleting, setDeleting] = useState<string | null>(null)
 
   const load = useCallback(async () => {
+    if (!PROJECT_ID) return
     setLoading(true)
     try {
       const res = await fetch(`/api/tasks?projectId=${PROJECT_ID}`)
@@ -382,9 +383,10 @@ export default function TasksPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [PROJECT_ID])
 
-  useEffect(() => { load() }, [load])
+  // Ao trocar de projeto, descarta a seleção/modal do projeto anterior e recarrega.
+  useEffect(() => { setSelected(null); setModalTask(null); load() }, [load])
 
   const toggle = (id: string) => setExpanded(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
 

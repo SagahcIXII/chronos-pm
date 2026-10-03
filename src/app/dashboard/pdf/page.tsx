@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
+import { projectProgress, executedAt } from '@/lib/progress'
 import { buildOrderedTasks } from '@/lib/taskTree'
 import { Calendar, Info, AlertTriangle, ClipboardList, Zap, FileText, Printer, Loader2, Mail } from 'lucide-react'
 
@@ -46,17 +47,7 @@ function calcPlannedLinear(pointDate: Date, projectStart: string, projectEnd: st
   return Math.min(100, Math.max(0, Math.round((elapsed / totalDays) * 100)))
 }
 
-// ── Executado: média simples igual ao banco ───────────────────────────────────
-function calcExecutedSimple(leaves: Task[], pointISO: string): number {
-  const active = leaves.filter(t => t.plannedStart && t.plannedStart <= pointISO)
-  if (!active.length) return 0
-  const sum = active.reduce((s, t) => {
-    const endRef = t.actualEnd || (t.status === 'COMPLETED' ? t.plannedEnd : null)
-    if (endRef && endRef <= pointISO) return s + 100
-    return s + t.progress
-  }, 0)
-  return Math.round(sum / active.length)
-}
+// ── Executado: fórmula oficial em '@/lib/progress' (executedAt) ──────────────
 
 // ── Curva S mensal para o PDF ─────────────────────────────────────────────────
 function buildCurve(tasks: Task[], projectStart: string, projectEnd: string, lang: string, refISO: string = todayISO) {
@@ -82,7 +73,7 @@ function buildCurve(tasks: Task[], projectStart: string, projectEnd: string, lan
     const refDateStr = refDate.toISOString().slice(0, 10)
 
     const plannedCumulative = calcPlannedLinear(refDate, projectStart, projectEnd)
-    const executedCumulative = !isFuture ? calcExecutedSimple(leaves, refDateStr) : null
+    const executedCumulative = !isFuture ? executedAt(leaves, refDateStr) : null
     const deviation = !isFuture && executedCumulative !== null ? executedCumulative - plannedCumulative : null
 
     rows.push({ period: label, plannedCumulative, executedCumulative, deviation, isCurrent, isFuture })
@@ -151,10 +142,8 @@ export default function PDFPage() {
   const critical = leaves.filter(t => t.isCritical).length
   const milestones = leaves.filter(t => t.isMilestone).length
 
-  // Avanço: média simples igual ao banco
-  const totalProgress = leaves.length
-    ? Math.round(leaves.reduce((s,t) => s + t.progress, 0) / leaves.length)
-    : ap.progress ?? 0
+  // Avanço: fórmula oficial (ponderada pelo peso) — igual ao Dashboard e à barra lateral
+  const totalProgress = leaves.length ? projectProgress(leaves) : ap.progress ?? 0
 
   // Curva S com metodologia linear
   const curveData = buildCurve(tasks, pStart, pEnd, lang, refDateISO)

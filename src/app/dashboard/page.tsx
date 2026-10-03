@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
+import { executedAt } from '@/lib/progress'
 import { AlertTriangle } from 'lucide-react'
 
 interface Task {
@@ -31,19 +32,6 @@ function calcPlannedLinear(pointDate: Date, projectStart: string, projectEnd: st
   return Math.min(100, Math.max(0, Math.round((elapsed / totalDays) * 100)))
 }
 
-// ── Executado: progresso real ponderado das tarefas ───────────────────────────
-function calcExecutedLinear(leaves: Task[], totalW: number, pointISO: string): number {
-  let execDone = 0
-  leaves.forEach(t => {
-    const w = t.weight || 1
-    const endRef = t.actualEnd || (t.status === 'COMPLETED' ? t.plannedEnd : null)
-    if (endRef && endRef <= pointISO) execDone += w
-    else if (t.status === 'IN_PROGRESS' && t.plannedStart && t.plannedStart <= pointISO)
-      execDone += w * (t.progress / 100)
-  })
-  return totalW ? Math.round(execDone / totalW * 100) : 0
-}
-
 // ── Gráfico semanal com metodologia linear ────────────────────────────────────
 function computeCurveData(tasks: Task[], lang: string, projectStart: string, projectEnd: string) {
   const leaves = tasks.filter(t => !t.isGroup)
@@ -60,7 +48,6 @@ function computeCurveData(tasks: Task[], lang: string, projectStart: string, pro
   const end = new Date(projectEnd || maxD)
   end.setDate(end.getDate() + 7)
 
-  const totalW = leaves.reduce((s, t) => s + (t.weight || 1), 0)
   const rows: any[] = []
   const cur = new Date(start)
 
@@ -83,7 +70,7 @@ function computeCurveData(tasks: Task[], lang: string, projectStart: string, pro
         period: todayLabel,
         date: todayISO,
         plannedCumulative: calcPlannedLinear(todayDate, projectStart, projectEnd),
-        executedCumulative: calcExecutedLinear(leaves, totalW, todayISO),
+        executedCumulative: executedAt(leaves, todayISO),
         isToday: true,
         isFuture: false,
       })
@@ -98,7 +85,7 @@ function computeCurveData(tasks: Task[], lang: string, projectStart: string, pro
       period: isToday ? todayLabel : weekLabel(pointDate),
       date: pointISO,
       plannedCumulative: calcPlannedLinear(pointDate, projectStart, projectEnd),
-      executedCumulative: !isFuture ? calcExecutedLinear(leaves, totalW, pointISO) : null,
+      executedCumulative: !isFuture ? executedAt(leaves, pointISO) : null,
       isToday,
       isFuture,
     })
@@ -110,7 +97,7 @@ function computeCurveData(tasks: Task[], lang: string, projectStart: string, pro
       period: todayLabel,
       date: todayISO,
       plannedCumulative: calcPlannedLinear(todayDate, projectStart, projectEnd),
-      executedCumulative: calcExecutedLinear(leaves, totalW, todayISO),
+      executedCumulative: executedAt(leaves, todayISO),
       isToday: true,
       isFuture: false,
     })

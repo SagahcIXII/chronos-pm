@@ -6,6 +6,7 @@ import {
 } from 'recharts'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
+import { executedAt } from '@/lib/progress'
 import { Calendar, AlertTriangle, CheckCircle2, Pin, ChevronUp, ChevronDown, Loader2, Plus, X } from 'lucide-react'
 
 interface Task {
@@ -69,19 +70,7 @@ function calcPlanned(leaves: Task[], _totalW: number, pointDate: Date, projectSt
   const elapsed = (pointDate.getTime() - start.getTime()) / 86400000
   return Math.min(100, Math.max(0, Math.round((elapsed / totalDays) * 100)))
 }
-// ── Executado: média simples igual ao banco (Σ progress / n tarefas ativas) ──
-// Mesma fórmula da API: allTasks.reduce((sum, t) => sum + t.progress, 0) / allTasks.length
-function calcExecuted(leaves: Task[], _totalW: number, pointISO: string): number {
-  // Considera apenas tarefas que já iniciaram neste ponto
-  const active = leaves.filter(t => t.plannedStart && t.plannedStart <= pointISO)
-  if (!active.length) return 0
-  const sum = active.reduce((s, t) => {
-    const endRef = t.actualEnd || (t.status === 'COMPLETED' ? t.plannedEnd : null)
-    if (endRef && endRef <= pointISO) return s + 100  // concluída = 100%
-    return s + t.progress
-  }, 0)
-  return Math.round(sum / active.length)
-}
+// ── Executado: fórmula oficial em '@/lib/progress' (executedAt) ──────────────
 // ── Gráfico principal: granularidade SEMANAL ─────────────────────────────────
 function buildWeeklyData(tasks: Task[], lang: string, projectStart: string, projectEnd: string, refISO: string = todayISO, snapshots: {date:string;executed:number;note:string}[] = []) {
   const leaves = tasks.filter(t => !t.isGroup)
@@ -124,7 +113,7 @@ function buildWeeklyData(tasks: Task[], lang: string, projectStart: string, proj
         period: todayLabel,
         date: refISO,
         plannedCumulative: calcPlanned(leaves, totalW, refDate, projectStart, projectEnd),
-        executedCumulative: snapToday ? snapToday.executed : calcExecuted(leaves, totalW, refISO),
+        executedCumulative: snapToday ? snapToday.executed : executedAt(leaves, refISO),
         isToday: true,
         isFuture: false,
         isSnapshot: !!snapToday,
@@ -148,7 +137,7 @@ function buildWeeklyData(tasks: Task[], lang: string, projectStart: string, proj
 
     const execValue = snap
       ? snap.executed
-      : (!isFuture ? calcExecuted(leaves, totalW, pointISO) : null)
+      : (!isFuture ? executedAt(leaves, pointISO) : null)
 
     rows.push({
       period: isToday ? todayLabel : weekLabel(pointDate, lang),
@@ -169,7 +158,7 @@ function buildWeeklyData(tasks: Task[], lang: string, projectStart: string, proj
       period: todayLabel,
       date: refISO,
       plannedCumulative: calcPlanned(leaves, totalW, refDate, projectStart, projectEnd),
-      executedCumulative: calcExecuted(leaves, totalW, refISO),
+      executedCumulative: executedAt(leaves, refISO),
       isToday: true,
       isFuture: false,
     })
@@ -216,22 +205,15 @@ function buildMonthlyData(tasks: Task[], lang: string, projectStart: string, pro
     const refDateStr = refDate.toISOString().slice(0, 10)
 
     const plannedCumulative = calcPlanned(leaves, totalW, refDate, projectStart, projectEnd)
-    const executedCumulative = !isFuture ? calcExecuted(leaves, totalW, refDateStr) : null
+    const executedCumulative = !isFuture ? executedAt(leaves, refDateStr) : null
 
     const prevEnd = new Date(cur); prevEnd.setDate(0)
     const prevISO = prevEnd.toISOString().slice(0, 10)
     const plannedPrev = calcPlanned(leaves, totalW, prevEnd, projectStart, projectEnd)
     const plannedPeriod = Math.max(0, plannedCumulative - plannedPrev)
 
-    let execPrev = 0
-    if (!isFuture) {
-      leaves.forEach(t => {
-        const endRef = t.actualEnd || (t.status === 'COMPLETED' ? t.plannedEnd : null)
-        if (endRef && endRef <= prevISO) execPrev += (t.weight || 1)
-      })
-    }
     const executedPeriod = !isFuture && executedCumulative !== null
-      ? Math.max(0, executedCumulative - Math.round(execPrev / totalW * 100))
+      ? Math.max(0, executedCumulative - executedAt(leaves, prevISO))
       : null
     const deviation = !isFuture && executedCumulative !== null ? executedCumulative - plannedCumulative : null
 

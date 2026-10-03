@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { computeWeightedProgress } from '@/lib/schedule'
-import { requireUser, assertProjectAccess, accessErrorResponse } from '@/lib/access'
+import { requireUser, assertProjectAccess, assertTaskRelations, accessErrorResponse } from '@/lib/access'
 
 const TaskSchema = z.object({
   projectId: z.string(),
@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
     const { predecessorIds, plannedStart, plannedEnd, actualStart, actualEnd, ...data } = parsed.data
 
     await assertProjectAccess(data.projectId, user, { write: true })
+    await assertTaskRelations(data.projectId, null, { parentId: data.parentId, predecessorIds })
 
     const task = await prisma.task.create({
       data: {

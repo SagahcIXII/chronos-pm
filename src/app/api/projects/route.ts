@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { projectProgress } from '@/lib/progress'
 import {
   requireUser,
   canEdit,
@@ -17,26 +18,20 @@ export async function GET(_req: NextRequest) {
     const projects = await prisma.project.findMany({
       where: { archived: false, ...projectVisibilityWhere(user) },
       include: {
-        tasks: { where: { parentId: null } },
+        tasks: { select: { isGroup: true, weight: true, progress: true, status: true } },
         client: { select: { id: true, name: true, email: true } },
-        _count: { select: { tasks: true } },
       },
       orderBy: { createdAt: 'desc' },
     })
 
-    const result = projects.map(p => {
-      const allTasks = p.tasks
-      const completed = allTasks.filter(t => t.status === 'COMPLETED').length
-      const inProgress = allTasks.filter(t => t.status === 'IN_PROGRESS').length
-      const totalProgress = allTasks.length > 0
-        ? allTasks.reduce((sum, t) => sum + t.progress, 0) / allTasks.length
-        : p.progress
+    const result = projects.map(({ tasks, ...p }) => {
+      const leaves = tasks.filter(t => !t.isGroup)
       return {
         ...p,
-        totalTasks: p._count.tasks,
-        completedTasks: completed,
-        inProgressTasks: inProgress,
-        computedProgress: Math.round(totalProgress),
+        totalTasks: leaves.length,
+        completedTasks: leaves.filter(t => t.status === 'COMPLETED').length,
+        inProgressTasks: leaves.filter(t => t.status === 'IN_PROGRESS').length,
+        computedProgress: leaves.length > 0 ? projectProgress(tasks) : p.progress,
       }
     })
 

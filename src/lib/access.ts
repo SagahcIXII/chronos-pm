@@ -99,6 +99,44 @@ export async function assertTaskAccess(
   return { task, project }
 }
 
+/**
+ * Valida as referências de uma tarefa a outras tarefas (pai e predecessoras):
+ * todas devem pertencer ao MESMO projeto, e a hierarquia não pode formar ciclo.
+ * Impede vincular tarefas a projetos de outro cliente.
+ * @param taskId id da tarefa sendo editada (null na criação).
+ */
+export async function assertTaskRelations(
+  projectId: string,
+  taskId: string | null,
+  rel: { parentId?: string | null; predecessorIds?: string[] }
+) {
+  const needsParent = !!rel.parentId
+  const preds = rel.predecessorIds ?? []
+  if (!needsParent && preds.length === 0) return
+
+  const projectTasks = await prisma.task.findMany({
+    where: { projectId },
+    select: { id: true, parentId: true },
+  })
+  const byId = new Map(projectTasks.map(t => [t.id, t]))
+
+  if (rel.parentId) {
+    if (rel.parentId === taskId) throw new AccessError('Uma tarefa não pode ser pai de si mesma', 400)
+    if (!byId.has(rel.parentId)) throw new AccessError('Tarefa pai não pertence a este projeto', 400)
+    // Sobe a partir do novo pai: se encontrar a própria tarefa, haveria ciclo.
+    let cur: string | null = rel.parentId
+    while (cur) {
+      if (cur === taskId) throw new AccessError('Hierarquia inválida: a tarefa pai é descendente desta tarefa', 400)
+      cur = byId.get(cur)?.parentId ?? null
+    }
+  }
+
+  for (const predId of preds) {
+    if (predId === taskId) throw new AccessError('Uma tarefa não pode ser predecessora de si mesma', 400)
+    if (!byId.has(predId)) throw new AccessError('Predecessora não pertence a este projeto', 400)
+  }
+}
+
 /** Converte qualquer erro em NextResponse JSON com o status correto. */
 export function accessErrorResponse(err: unknown) {
   if (err instanceof AccessError) {
