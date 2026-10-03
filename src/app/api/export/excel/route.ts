@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { formatDateBR, statusLabel, priorityLabel, isTaskDelayed } from '@/lib/schedule'
 import { requireUser, assertProjectAccess, accessErrorResponse } from '@/lib/access'
 import { buildOrderedTasks } from '@/lib/taskTree'
+import { workItems, projectProgress } from '@/lib/progress'
 import * as XLSX from 'xlsx'
 
 export async function GET(req: NextRequest) {
@@ -83,8 +84,8 @@ export async function GET(req: NextRequest) {
     ['Início Planejado', formatDateBR(project.startDate)],
     ['Término Planejado', formatDateBR(project.endDate)],
     ['Status', statusLabel(project.status)],
-    ['Avanço Geral', `${project.progress}%`],
-    ['Total de Tarefas', tasks.filter(t => !t.isGroup).length],
+    ['Avanço Geral', `${projectProgress(tasks)}%`],
+    ['Total de Tarefas', workItems(tasks).length],
     ['Concluídas', tasks.filter(t => t.status === 'COMPLETED').length],
     ['Em Andamento', tasks.filter(t => t.status === 'IN_PROGRESS').length],
     ['Não Iniciadas', tasks.filter(t => t.status === 'NOT_STARTED').length],

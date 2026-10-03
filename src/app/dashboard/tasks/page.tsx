@@ -4,6 +4,7 @@ import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
 import { useSession } from 'next-auth/react'
 import { buildOrderedTasks } from '@/lib/taskTree'
+import { workItems } from '@/lib/progress'
 import { Paperclip, Search, ClipboardList, ChevronDown, ChevronRight, Diamond, Zap, Clock, Pencil, Trash2, Loader2 } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -408,7 +409,7 @@ export default function TasksPage() {
   })
 
   const sel = selected ? tasks.find(t => t.id === selected) : null
-  const leaves = tasks.filter(t => !t.isGroup)
+  const leaves = workItems(tasks)
 
   const sl = (s: string) => (t.status as any)[s] ?? s
   const pl = (p: string) => (t.priority as any)[p] ?? p

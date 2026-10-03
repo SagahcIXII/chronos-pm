@@ -6,7 +6,7 @@ import nodemailer from 'nodemailer'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireUser, assertProjectAccess, accessErrorResponse } from '@/lib/access'
-import { projectProgress, buildMonthlyCurve } from '@/lib/progress'
+import { projectProgress, buildMonthlyCurve, workItems } from '@/lib/progress'
 import { buildOrderedTasks } from '@/lib/taskTree'
 
 const transporter = nodemailer.createTransport({
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
   try {
     const tasks = await prisma.task.findMany({ where: { projectId } })
     const ordered = buildOrderedTasks(tasks)
-    const leaves = ordered.filter(t => !t.isGroup)
+    const leaves = workItems(ordered)
 
     // ── Datas ────────────────────────────────────────────
     const refISO = parsed.data.refDate ?? new Date().toISOString().slice(0, 10)

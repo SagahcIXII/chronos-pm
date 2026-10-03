@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
-import { projectProgress, buildMonthlyCurve } from '@/lib/progress'
+import { projectProgress, buildMonthlyCurve, workItems } from '@/lib/progress'
 import { buildOrderedTasks } from '@/lib/taskTree'
 import { Calendar, Info, AlertTriangle, ClipboardList, Zap, FileText, Printer, Loader2, Mail } from 'lucide-react'
 
@@ -81,7 +81,7 @@ export default function PDFPage() {
   const pStart = ap.startDate?.slice(0,10) ?? ''
   const pEnd = ap.endDate?.slice(0,10) ?? ''
 
-  const leaves = tasks.filter(t => !t.isGroup)
+  const leaves = workItems(tasks)
   const groups = tasks.filter(t => t.isGroup)
 
   // KPIs de tarefas

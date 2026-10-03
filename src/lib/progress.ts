@@ -4,28 +4,35 @@
 // Usada pela API (barra lateral / lista de projetos / banco), Dashboard,
 // Curva S, Relatório PDF e Excel. Não duplique esta lógica nas páginas.
 //
-//   • Avanço do projeto = Σ(peso × progresso) ÷ Σ(peso), sobre todas as
-//     tarefas que não são grupo (grupos não entram — evitam contagem dupla).
+//   • Avanço do projeto = Σ(peso × progresso) ÷ Σ(peso), sobre as tarefas
+//     de execução (ver workItems): tarefas comuns + grupos SEM subtarefas
+//     (ex.: "Meta 1" lançada como grupo e preenchida à mão). Grupos com
+//     subtarefas não entram — o avanço deles já vem das filhas.
 //   • Peso ausente ou 0 conta como 1.
 //
-//   • Executado na Curva S em uma data X = mesma média ponderada, mas só
-//     com as tarefas cujo INÍCIO PLANEJADO já chegou (≤ X). Uma tarefa com
-//     0% cujo início já passou entra e puxa a curva para baixo — mostra o
-//     descumprimento do plano. Tarefas que ainda não deveriam ter começado
-//     ficam de fora.
-//     Tarefa concluída até X (término real, ou término planejado se status
-//     COMPLETED sem término real) conta 100%; as demais contam o progresso atual.
+//   • Executado na Curva S em uma data X = Σ(peso × progresso em X) ÷ Σ(peso
+//     de TODAS as tarefas) — sempre relativo ao escopo total do projeto.
+//     Tarefa não iniciada conta 0% (e o desvio cresce porque o planejado sobe).
+//     Como o banco não guarda o progresso histórico de cada tarefa, o
+//     progresso em X é estimado de forma linear:
+//       – concluída: de 0% no início até 100% no término (real ou planejado);
+//       – em andamento: de 0% no início até o progresso atual em "hoje".
+//     Início = início real, ou planejado se não houver. Resultado: curva
+//     crescente que, em "hoje", é igual ao avanço do projeto.
 // ─────────────────────────────────────────────────────────────
 
 type DateLike = string | Date | null | undefined
 
 export interface ProgressTask {
+  id?: string
+  parentId?: string | null
   isGroup: boolean
   weight?: number | null
   progress: number
   status?: string
   plannedStart?: DateLike
   plannedEnd?: DateLike
+  actualStart?: DateLike
   actualEnd?: DateLike
 }
 
@@ -44,11 +51,20 @@ function weightedAverage(items: { w: number; p: number }[]): number {
   return Math.round(items.reduce((s, i) => s + i.w * i.p, 0) / totalW)
 }
 
+/**
+ * Tarefas que medem execução: as que não têm subtarefas na lista.
+ * Um grupo vazio conta como tarefa (com o progresso preenchido nele).
+ * Sem id/parentId na lista, cai no critério antigo (tudo que não é grupo).
+ */
+export function workItems<T extends ProgressTask>(tasks: T[]): T[] {
+  if (tasks.some(t => t.id === undefined)) return tasks.filter(t => !t.isGroup)
+  const parents = new Set(tasks.map(t => t.parentId).filter(Boolean))
+  return tasks.filter(t => !parents.has(t.id!))
+}
+
 /** Avanço físico atual do projeto (%), inteiro de 0 a 100. */
 export function projectProgress(tasks: ProgressTask[]): number {
-  return weightedAverage(
-    tasks.filter(t => !t.isGroup).map(t => ({ w: weightOf(t), p: t.progress }))
-  )
+  return weightedAverage(workItems(tasks).map(t => ({ w: weightOf(t), p: t.progress })))
 }
 
 /**
@@ -84,7 +100,7 @@ export function buildMonthlyCurve(
   refISO: string,
   lang: string
 ): MonthlyCurveRow[] {
-  const leaves = tasks.filter(t => !t.isGroup)
+  const leaves = workItems(tasks)
   if (!leaves.length || !projectStartISO || !projectEndISO) return []
 
   const ref = refISO.slice(0, 10)
@@ -115,16 +131,35 @@ export function buildMonthlyCurve(
   return rows
 }
 
-/** Executado acumulado (%) na data `pointISO` ('YYYY-MM-DD') — ponto da Curva S. */
-export function executedAt(tasks: ProgressTask[], pointISO: string): number {
+/** Data de hoje no fuso local ('YYYY-MM-DD'). */
+export function localTodayISO(): string {
+  const n = new Date()
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
+}
+
+const dayNum = (iso: string) => Date.parse(iso + 'T00:00:00Z') / 86400000
+
+/** Progresso estimado (%) de uma tarefa na data `point` (ver cabeçalho). */
+function progressAt(t: ProgressTask, point: string, asOf: string): number {
+  const done = t.status === 'COMPLETED' || t.progress >= 100
+  const target = done ? 100 : t.progress
+  if (target <= 0) return 0
+  const start = dayISO(t.actualStart) ?? dayISO(t.plannedStart)
+  let end = done ? (dayISO(t.actualEnd) ?? dayISO(t.plannedEnd) ?? asOf) : asOf
+  if (end > asOf) end = asOf // o que está feito hoje já está feito em "hoje"
+  if (point >= end) return target
+  if (!start || point < start) return 0
+  const span = dayNum(end) - dayNum(start)
+  if (span <= 0) return target
+  return target * (dayNum(point) - dayNum(start)) / span
+}
+
+/**
+ * Executado acumulado (%) na data `pointISO` ('YYYY-MM-DD') — ponto da Curva S.
+ * @param asOfISO data a que o progresso atual das tarefas se refere (hoje).
+ */
+export function executedAt(tasks: ProgressTask[], pointISO: string, asOfISO: string = localTodayISO()): number {
   const point = pointISO.slice(0, 10)
-  const items: { w: number; p: number }[] = []
-  for (const t of tasks) {
-    if (t.isGroup) continue
-    const start = dayISO(t.plannedStart)
-    if (!start || start > point) continue
-    const doneOn = dayISO(t.actualEnd) ?? (t.status === 'COMPLETED' ? dayISO(t.plannedEnd) : null)
-    items.push({ w: weightOf(t), p: doneOn && doneOn <= point ? 100 : t.progress })
-  }
-  return weightedAverage(items)
+  const asOf = asOfISO.slice(0, 10)
+  return weightedAverage(workItems(tasks).map(t => ({ w: weightOf(t), p: progressAt(t, point, asOf) })))
 }

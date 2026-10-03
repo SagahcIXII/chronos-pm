@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { projectProgress } from '@/lib/progress'
+import { projectProgress, workItems } from '@/lib/progress'
 import {
   requireUser,
   canEdit,
@@ -18,14 +18,14 @@ export async function GET(_req: NextRequest) {
     const projects = await prisma.project.findMany({
       where: { archived: false, ...projectVisibilityWhere(user) },
       include: {
-        tasks: { select: { isGroup: true, weight: true, progress: true, status: true } },
+        tasks: { select: { id: true, parentId: true, isGroup: true, weight: true, progress: true, status: true } },
         client: { select: { id: true, name: true, email: true } },
       },
       orderBy: { createdAt: 'desc' },
     })
 
     const result = projects.map(({ tasks, ...p }) => {
-      const leaves = tasks.filter(t => !t.isGroup)
+      const leaves = workItems(tasks)
       return {
         ...p,
         totalTasks: leaves.length,

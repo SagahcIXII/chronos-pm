@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
-import { executedAt } from '@/lib/progress'
+import { executedAt, workItems } from '@/lib/progress'
 import { AlertTriangle } from 'lucide-react'
 
 interface Task {
@@ -34,7 +34,7 @@ function calcPlannedLinear(pointDate: Date, projectStart: string, projectEnd: st
 
 // ── Gráfico semanal com metodologia linear ────────────────────────────────────
 function computeCurveData(tasks: Task[], lang: string, projectStart: string, projectEnd: string) {
-  const leaves = tasks.filter(t => !t.isGroup)
+  const leaves = workItems(tasks)
   if (!leaves.length) return { rows: [], todayLabel: '' }
 
   const dates = leaves.flatMap(t => [t.plannedStart, t.plannedEnd].filter(Boolean) as string[])
@@ -156,7 +156,7 @@ export default function DashboardPage() {
 
   useEffect(() => { load() }, [load])
 
-  const leaves = tasks.filter(t => !t.isGroup)
+  const leaves = workItems(tasks)
   const groups = tasks.filter(t => t.isGroup)
   const completed = leaves.filter(t => t.status === 'COMPLETED').length
   const milestones = leaves.filter(t => t.isMilestone)

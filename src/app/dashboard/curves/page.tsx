@@ -6,7 +6,7 @@ import {
 } from 'recharts'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
-import { executedAt } from '@/lib/progress'
+import { executedAt, workItems } from '@/lib/progress'
 import { Calendar, AlertTriangle, CheckCircle2, Pin, ChevronUp, ChevronDown, Loader2, Plus, X } from 'lucide-react'
 
 interface Task {
@@ -73,7 +73,7 @@ function calcPlanned(leaves: Task[], _totalW: number, pointDate: Date, projectSt
 // ── Executado: fórmula oficial em '@/lib/progress' (executedAt) ──────────────
 // ── Gráfico principal: granularidade SEMANAL ─────────────────────────────────
 function buildWeeklyData(tasks: Task[], lang: string, projectStart: string, projectEnd: string, refISO: string = todayISO, snapshots: {date:string;executed:number;note:string}[] = []) {
-  const leaves = tasks.filter(t => !t.isGroup)
+  const leaves = workItems(tasks)
   if (!leaves.length) return { rows: [], todayLabel: '' }
 
   const dates = leaves.flatMap(t => [t.plannedStart, t.plannedEnd].filter(Boolean) as string[])
@@ -178,7 +178,7 @@ function buildWeeklyData(tasks: Task[], lang: string, projectStart: string, proj
 }
 // ── Tabela e barras: granularidade MENSAL ────────────────────────────────────
 function buildMonthlyData(tasks: Task[], lang: string, projectStart: string, projectEnd: string, refISO: string = todayISO) {
-  const leaves = tasks.filter(t => !t.isGroup)
+  const leaves = workItems(tasks)
   if (!leaves.length) return []
 
   const dates = leaves.flatMap(t => [t.plannedStart, t.plannedEnd].filter(Boolean) as string[])
@@ -391,7 +391,7 @@ export default function CurveSPage() {
 
       {loading ? (
         <div style={{ color: 'var(--text3)', fontSize: 14 }}>{lang === 'pt' ? 'Carregando…' : 'Loading…'}</div>
-      ) : tasks.filter(t => !t.isGroup).length === 0 ? (
+      ) : workItems(tasks).length === 0 ? (
         <div style={{ color: 'var(--text3)', fontSize: 14 }}>{lang === 'pt' ? 'Nenhuma tarefa cadastrada' : 'No tasks yet'}</div>
       ) : (
         <>
