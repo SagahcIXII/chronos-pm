@@ -19,7 +19,7 @@ export async function GET(_req: NextRequest) {
       where: { archived: false, ...projectVisibilityWhere(user) },
       include: {
         tasks: { select: { id: true, parentId: true, isGroup: true, weight: true, progress: true, status: true } },
-        organization: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true, active: true } },
       },
       orderBy: { createdAt: 'desc' },
     })

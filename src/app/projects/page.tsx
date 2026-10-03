@@ -6,7 +6,7 @@ import { useLang, LangSwitcher } from '@/lib/i18n'
 import { signOut, useSession } from 'next-auth/react'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { useCanEdit } from '@/lib/useCanEdit'
-import { Plus, Pencil, Trash2, X, Save, AlertCircle, Loader2, Users, KeyRound, FolderOpen, Archive, ArrowRight, Copy } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Save, AlertCircle, Loader2, Users, KeyRound, FolderOpen, Archive, ArrowRight, Copy, Building2, ChevronDown, ChevronRight } from 'lucide-react'
 
 interface Project {
   id: string; code: string; name: string; description?: string
@@ -15,7 +15,7 @@ interface Project {
   totalTasks?: number; completedTasks?: number; inProgressTasks?: number
   computedProgress?: number
   organizationId?: string | null
-  organization?: { id: string; name: string } | null
+  organization?: { id: string; name: string; active?: boolean } | null
 }
 
 interface OrgOption { id: string; name: string; active: boolean }
@@ -239,6 +239,16 @@ export default function ProjectsPage() {
   const canEdit = useCanEdit()
   const isAdminUser = (session?.user as any)?.role === 'ADMIN'
   const [duplicating, setDuplicating] = useState<string|null>(null)
+  // Grupos (empresas) recolhidos — lembrado por navegador.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('chronos_collapsed_orgs') || '[]')) } catch { return new Set() }
+  })
+  const toggleGroup = (key: string) => setCollapsed(prev => {
+    const next = new Set(prev)
+    next.has(key) ? next.delete(key) : next.add(key)
+    try { localStorage.setItem('chronos_collapsed_orgs', JSON.stringify([...next])) } catch {}
+    return next
+  })
 
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
@@ -274,6 +284,23 @@ export default function ProjectsPage() {
       await Promise.all([load(), reloadContext()])
     } finally { setDuplicating(null) }
   }
+
+  // ADMIN: um grupo por empresa (A→Z) e "BD7D — internos" por último.
+  // Demais usuários: um único grupo sem cabeçalho (já veem só a própria empresa).
+  type ProjectGroup = { key: string; label: string | null; inactive?: boolean; items: Project[] }
+  const projectGroups: ProjectGroup[] = (() => {
+    if (!isAdminUser) return projects.length ? [{ key: 'all', label: null, items: projects }] : []
+    const map = new Map<string, ProjectGroup>()
+    for (const p of projects) {
+      const key = p.organization?.id ?? '__internal__'
+      const label = p.organization?.name ?? (lang==='pt' ? 'BD7D — projetos internos' : 'BD7D — internal projects')
+      const g = map.get(key) ?? { key, label, inactive: p.organization?.active === false, items: [] }
+      g.items.push(p)
+      map.set(key, g)
+    }
+    return [...map.values()].sort((a, b) =>
+      a.key === '__internal__' ? 1 : b.key === '__internal__' ? -1 : (a.label ?? '').localeCompare(b.label ?? '', 'pt-BR'))
+  })()
 
   const handleSelect = (p: Project) => {
     setActiveProject({
@@ -385,10 +412,10 @@ export default function ProjectsPage() {
           </div>
         )}
 
-        {/* Project cards */}
-        {!loading && (
+        {/* Project cards — ADMIN vê agrupado por empresa; demais, lista única */}
+        {!loading && projects.length === 0 && (
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(340px,1fr))',gap:20}}>
-            {projects.length === 0 && (
+            {(
               <div style={{gridColumn:'1/-1',textAlign:'center',padding:64,color:'var(--text3)'}}>
                 <div style={{marginBottom:12,display:'flex',justifyContent:'center',color:'var(--text3)'}}><FolderOpen size={44}/></div>
                 <p style={{fontSize:16,fontWeight:600,marginBottom:6}}>{lang==='pt'?'Nenhum projeto cadastrado':'No projects registered'}</p>
@@ -397,7 +424,28 @@ export default function ProjectsPage() {
                   : (lang==='pt'?'Nenhum projeto foi compartilhado com você ainda.':'No projects have been shared with you yet.')}</p>
               </div>
             )}
-            {projects.map(project => {
+          </div>
+        )}
+        {!loading && projectGroups.map(group => {
+          const isCollapsed = group.label !== null && collapsed.has(group.key)
+          const avg = group.items.length ? Math.round(group.items.reduce((s, p) => s + (p.computedProgress ?? p.progress), 0) / group.items.length) : 0
+          return (
+          <section key={group.key} style={{marginBottom:28}}>
+            {group.label !== null && (
+              <button onClick={()=>toggleGroup(group.key)}
+                style={{display:'flex',alignItems:'center',gap:10,width:'100%',background:'none',border:'none',borderBottom:'1px solid var(--border)',padding:'0 0 10px',marginBottom:16,cursor:'pointer',color:'var(--text)',textAlign:'left',fontFamily:'inherit'}}>
+                {isCollapsed ? <ChevronRight size={18} style={{color:'var(--text3)'}}/> : <ChevronDown size={18} style={{color:'var(--text3)'}}/>}
+                <Building2 size={17} style={{color:'var(--text3)'}}/>
+                <span style={{fontFamily:'Syne,sans-serif',fontSize:17,fontWeight:800}}>{group.label}</span>
+                {group.inactive && <span style={{fontSize:11,color:'#f87171'}}>{lang==='pt'?'(inativa)':'(inactive)'}</span>}
+                <span style={{fontSize:12,color:'var(--text3)'}}>
+                  {group.items.length} {lang==='pt'?(group.items.length===1?'projeto':'projetos'):(group.items.length===1?'project':'projects')} · {lang==='pt'?'avanço médio':'avg. progress'} {avg}%
+                </span>
+              </button>
+            )}
+            {!isCollapsed && (
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(340px,1fr))',gap:20}}>
+            {group.items.map(project => {
               const color = STATUS_COLORS[project.status] || '#3b82f6'
               const progress = project.computedProgress ?? project.progress
               return (
@@ -472,7 +520,10 @@ export default function ProjectsPage() {
               )
             })}
           </div>
-        )}
+            )}
+          </section>
+          )
+        })}
       </main>
     </div>
   )
