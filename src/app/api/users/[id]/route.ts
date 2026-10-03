@@ -9,6 +9,8 @@ type Params = { params: { id: string } }
 
 const UpdateUserSchema = z.object({
   name: z.string().min(2).max(120).optional(),
+  // E-mail é o login; troca validada contra duplicidade.
+  email: z.string().email().optional(),
   role: z.enum(['ADMIN', 'MANAGER', 'CLIENT', 'VIEWER']).optional(),
   active: z.boolean().optional(),
   // Reset de senha opcional.
@@ -17,7 +19,7 @@ const UpdateUserSchema = z.object({
   organizationId: z.string().nullable().optional(),
 })
 
-// PATCH /api/users/[id] — edita nome/papel/ativo/senha (ADMIN).
+// PATCH /api/users/[id] — edita nome/e-mail/papel/ativo/senha/empresa (ADMIN).
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
     const admin = await requireUser()
@@ -39,6 +41,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       if (role && role !== 'ADMIN') return NextResponse.json({ error: 'Você não pode rebaixar a própria conta' }, { status: 400 })
     }
 
+    const email = parsed.data.email?.toLowerCase().trim()
+    if (email && email !== target.email) {
+      const clash = await prisma.user.findUnique({ where: { email } })
+      if (clash) return NextResponse.json({ error: 'Já existe um usuário com este e-mail' }, { status: 409 })
+    }
+
     // Empresa: recalcula quando muda o papel ou a empresa (ADMIN fica sem empresa).
     const finalRole = role ?? target.role
     const orgChanged = parsed.data.organizationId !== undefined || role !== undefined
@@ -50,6 +58,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       where: { id: params.id },
       data: {
         ...(name && { name }),
+        ...(email && email !== target.email && { email }),
         ...(role && { role }),
         ...(active !== undefined && { active }),
         ...(password && { password: await bcrypt.hash(password, 12) }),

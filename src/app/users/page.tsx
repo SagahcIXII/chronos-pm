@@ -52,7 +52,7 @@ function UserModal({ user, orgs, onClose, onSave, lang }: {
   const [error, setError] = useState('')
 
   const handleSubmit = async () => {
-    if (!form.name || (!isEdit && !form.email)) {
+    if (!form.name || !form.email.trim()) {
       setError(lang === 'pt' ? 'Preencha nome e e-mail.' : 'Fill name and email.')
       return
     }
@@ -66,7 +66,7 @@ function UserModal({ user, orgs, onClose, onSave, lang }: {
       const method = isEdit ? 'PATCH' : 'POST'
       const organizationId = form.role === 'ADMIN' ? null : (form.organizationId || null)
       const body: any = isEdit
-        ? { name: form.name, role: form.role, active: form.active, organizationId }
+        ? { name: form.name, email: form.email, role: form.role, active: form.active, organizationId }
         : { name: form.name, email: form.email, password: form.password, role: form.role, organizationId }
       // Reset de senha opcional na edição.
       if (isEdit && form.password) {
@@ -98,7 +98,7 @@ function UserModal({ user, orgs, onClose, onSave, lang }: {
           </div>
           <div>
             <label style={LABEL}>{lang === 'pt' ? 'E-mail *' : 'Email *'}</label>
-            <input style={{ ...INPUT, opacity: isEdit ? 0.6 : 1 }} value={form.email} disabled={isEdit}
+            <input style={INPUT} value={form.email}
               onChange={e => setForm(p => ({ ...p, email: e.target.value }))} placeholder="cliente@empresa.com" />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
