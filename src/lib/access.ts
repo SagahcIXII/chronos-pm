@@ -2,14 +2,17 @@
 // ─────────────────────────────────────────────────────────────
 // Controle de acesso central (multi-tenancy).
 //
-// Regras:
-//   • ADMIN  → enxerga e edita TODOS os projetos (você / BD7D).
-//   • MANAGER → edita projetos que possui ou que lhe foram atribuídos.
-//   • CLIENT / VIEWER → SOMENTE LEITURA e SOMENTE dos projetos onde
-//     ele é o dono (ownerId) ou o cliente (clientId).
+// Regras (isolamento por EMPRESA):
+//   • ADMIN (BD7D) → enxerga e edita TODOS os projetos de todas as empresas.
+//   • Usuário de uma empresa → enxerga SOMENTE os projetos da sua empresa.
+//       – MANAGER edita todos os projetos da empresa.
+//       – CLIENT / VIEWER: somente leitura (podem comentar).
+//   • Usuário sem empresa (interno BD7D, não-admin) → só os projetos que
+//     criou e que não pertencem a nenhuma empresa.
 //
-// Um cliente NUNCA vê os projetos internos da BD7D: o filtro de
-// visibilidade é aplicado em toda leitura no servidor.
+// Uma empresa NUNCA vê projetos de outra nem os internos da BD7D: o filtro
+// é aplicado em toda leitura no servidor. Usuário ou empresa inativos perdem
+// o acesso na próxima requisição (não esperam a sessão expirar).
 // ─────────────────────────────────────────────────────────────
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
@@ -22,6 +25,7 @@ export interface SessionUser {
   id: string
   email: string
   role: Role
+  organizationId: string | null
 }
 
 /** Erro de autorização com status HTTP embutido. */
@@ -34,14 +38,24 @@ export class AccessError extends Error {
   }
 }
 
-/** Retorna o usuário logado ou lança 401. */
+/**
+ * Retorna o usuário logado ou lança 401. Papel e empresa vêm do BANCO (não do
+ * token), então mudanças feitas pelo admin valem na hora.
+ */
 export async function requireUser(): Promise<SessionUser> {
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) throw new AccessError('Não autorizado', 401)
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { id: true, email: true, role: true, active: true, organizationId: true, organization: { select: { active: true } } },
+  })
+  if (!user || !user.active) throw new AccessError('Usuário inativo', 401)
+  if (user.organization && !user.organization.active) throw new AccessError('Empresa inativa', 401)
   return {
-    id: session.user.id,
-    email: session.user.email,
-    role: (session.user.role as Role) ?? 'VIEWER',
+    id: user.id,
+    email: user.email,
+    role: (user.role as Role) ?? 'VIEWER',
+    organizationId: user.organizationId,
   }
 }
 
@@ -58,12 +72,14 @@ export function canEdit(user: SessionUser): boolean {
 /**
  * Fragmento `where` do Prisma que restringe os projetos visíveis.
  *   • Admin → {} (sem restrição).
- *   • Demais → dono OU cliente do projeto.
+ *   • Usuário de empresa → projetos da empresa.
+ *   • Usuário sem empresa → projetos internos que ele criou.
  * Use em TODA listagem/leitura de projetos.
  */
 export function projectVisibilityWhere(user: SessionUser): Prisma.ProjectWhereInput {
   if (isAdmin(user)) return {}
-  return { OR: [{ ownerId: user.id }, { clientId: user.id }] }
+  if (user.organizationId) return { organizationId: user.organizationId }
+  return { ownerId: user.id, organizationId: null }
 }
 
 /**
@@ -135,6 +151,29 @@ export async function assertTaskRelations(
     if (predId === taskId) throw new AccessError('Uma tarefa não pode ser predecessora de si mesma', 400)
     if (!byId.has(predId)) throw new AccessError('Predecessora não pertence a este projeto', 400)
   }
+}
+
+/**
+ * Valida o par papel/empresa de um usuário e devolve o organizationId a gravar.
+ * ADMIN nunca pertence a empresa (enxerga todas).
+ */
+export async function resolveUserOrganization(role: string, organizationId: string | null | undefined) {
+  if (role === 'ADMIN' || !organizationId) return null
+  const org = await prisma.organization.findUnique({ where: { id: organizationId } })
+  if (!org) throw new AccessError('Empresa informada não existe', 400)
+  return org.id
+}
+
+/**
+ * Empresa de um projeto novo/editado: ADMIN escolhe (ou deixa interno);
+ * demais usuários sempre gravam na própria empresa.
+ */
+export async function resolveProjectOrganization(user: SessionUser, requested: string | null | undefined) {
+  if (!isAdmin(user)) return user.organizationId
+  if (!requested) return null
+  const org = await prisma.organization.findUnique({ where: { id: requested } })
+  if (!org) throw new AccessError('Empresa informada não existe', 400)
+  return org.id
 }
 
 /** Converte qualquer erro em NextResponse JSON com o status correto. */

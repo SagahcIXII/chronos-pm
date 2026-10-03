@@ -5,8 +5,8 @@ import { projectProgress, workItems } from '@/lib/progress'
 import {
   requireUser,
   canEdit,
-  isAdmin,
   projectVisibilityWhere,
+  resolveProjectOrganization,
   accessErrorResponse,
 } from '@/lib/access'
 
@@ -19,7 +19,7 @@ export async function GET(_req: NextRequest) {
       where: { archived: false, ...projectVisibilityWhere(user) },
       include: {
         tasks: { select: { id: true, parentId: true, isGroup: true, weight: true, progress: true, status: true } },
-        client: { select: { id: true, name: true, email: true } },
+        organization: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
     })
@@ -51,8 +51,8 @@ const CreateProjectSchema = z.object({
   endDate: z.string().min(1),
   status: z.string().optional(),
   observations: z.string().max(2000).optional().nullable(),
-  // Cliente que poderá visualizar o projeto (opcional).
-  clientId: z.string().optional().nullable(),
+  // Empresa do projeto — só o ADMIN escolhe; os demais usam a própria empresa.
+  organizationId: z.string().optional().nullable(),
 })
 
 // POST /api/projects — cria projeto (ADMIN/MANAGER).
@@ -70,21 +70,11 @@ export async function POST(req: NextRequest) {
         { status: 422 }
       )
     }
-    const { code, name, description, responsible, startDate, endDate, status, observations, clientId } =
-      parsed.data
-
-    // Apenas ADMIN pode atribuir um cliente ao projeto. Para os demais
-    // (ex.: MANAGER criando o próprio projeto), o clientId é ignorado.
-    const effectiveClientId = isAdmin(user) ? (clientId || null) : null
+    const { code, name, description, responsible, startDate, endDate, status, observations } = parsed.data
+    const organizationId = await resolveProjectOrganization(user, parsed.data.organizationId)
 
     const existing = await prisma.project.findUnique({ where: { code } })
     if (existing) return NextResponse.json({ error: 'Código já existe' }, { status: 409 })
-
-    // Se informado por um admin, valida que o clientId é um usuário existente.
-    if (effectiveClientId) {
-      const client = await prisma.user.findUnique({ where: { id: effectiveClientId } })
-      if (!client) return NextResponse.json({ error: 'Cliente informado não existe' }, { status: 400 })
-    }
 
     const project = await prisma.project.create({
       data: {
@@ -93,7 +83,7 @@ export async function POST(req: NextRequest) {
         description: description || null,
         responsible,
         ownerId: user.id,
-        clientId: effectiveClientId,
+        organizationId,
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         status: status || 'IN_PROGRESS',

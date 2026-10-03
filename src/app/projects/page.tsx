@@ -14,11 +14,11 @@ interface Project {
   status: string; progress: number; observations?: string
   totalTasks?: number; completedTasks?: number; inProgressTasks?: number
   computedProgress?: number
-  clientId?: string | null
-  client?: { id: string; name: string; email: string } | null
+  organizationId?: string | null
+  organization?: { id: string; name: string } | null
 }
 
-interface ClientOption { id: string; name: string; email: string }
+interface OrgOption { id: string; name: string; active: boolean }
 
 const STATUS_COLORS: Record<string,string> = {
   IN_PROGRESS:'#3b82f6', COMPLETED:'#22c55e', NOT_STARTED:'#5a6a84', ON_HOLD:'#f59e0b'
@@ -55,19 +55,19 @@ function ProjectModal({ project, onClose, onSave, lang }: {
     endDate: project?.endDate ? project.endDate.slice(0,10) : '',
     status: project?.status ?? 'IN_PROGRESS',
     observations: project?.observations ?? '',
-    clientId: project?.clientId ?? '',
+    organizationId: project?.organizationId ?? '',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [clients, setClients] = useState<ClientOption[]>([])
+  const [orgs, setOrgs] = useState<OrgOption[]>([])
 
-  // Carrega os usuários-cliente para o seletor (apenas admin usa o campo).
+  // Carrega as empresas para o seletor (apenas admin usa o campo).
   useEffect(() => {
     if (!isAdmin) return
-    fetch('/api/users?role=CLIENT')
+    fetch('/api/organizations')
       .then(r => r.ok ? r.json() : { data: [] })
-      .then(j => setClients(j.data ?? []))
-      .catch(() => setClients([]))
+      .then(j => setOrgs(j.data ?? []))
+      .catch(() => setOrgs([]))
   }, [isAdmin])
 
   const statusOptions = lang === 'pt'
@@ -85,7 +85,8 @@ function ProjectModal({ project, onClose, onSave, lang }: {
       const method = isEdit ? 'PUT' : 'POST'
       const res = await fetch(url, {
         method, headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ ...form, clientId: form.clientId || null })
+        // Só o admin envia a empresa; para os demais o servidor usa a do usuário.
+        body: JSON.stringify(isAdmin ? { ...form, organizationId: form.organizationId || null } : (({ organizationId, ...rest }) => rest)(form))
       })
       if (!res.ok) {
         const d = await res.json()
@@ -158,16 +159,16 @@ function ProjectModal({ project, onClose, onSave, lang }: {
           </div>
           {isAdmin && (
             <div>
-              <label style={LABEL}>{lang==='pt'?'Cliente (quem pode visualizar)':'Client (who can view)'}</label>
-              <select style={{...INPUT,cursor:'pointer'}} value={form.clientId}
-                onChange={e=>setForm(p=>({...p,clientId:e.target.value}))}>
-                <option value="">{lang==='pt'?'— Nenhum (projeto interno) —':'— None (internal project) —'}</option>
-                {clients.map(c=><option key={c.id} value={c.id}>{c.name} ({c.email})</option>)}
+              <label style={LABEL}>{lang==='pt'?'Empresa':'Company'}</label>
+              <select style={{...INPUT,cursor:'pointer'}} value={form.organizationId}
+                onChange={e=>setForm(p=>({...p,organizationId:e.target.value}))}>
+                <option value="">{lang==='pt'?'— BD7D (projeto interno) —':'— BD7D (internal project) —'}</option>
+                {orgs.map(o=><option key={o.id} value={o.id}>{o.name}{o.active?'':(lang==='pt'?' (inativa)':' (inactive)')}</option>)}
               </select>
               <p style={{fontSize:11,color:'var(--text3)',marginTop:5}}>
                 {lang==='pt'
-                  ? 'O cliente selecionado verá este projeto (somente leitura). Deixe em branco para manter interno.'
-                  : 'The selected client will see this project (read-only). Leave blank to keep it internal.'}
+                  ? 'Todos os usuários da empresa verão este projeto; gerentes da empresa podem editá-lo.'
+                  : 'All users of the company will see this project; company managers can edit it.'}
               </p>
             </div>
           )}
@@ -236,6 +237,7 @@ export default function ProjectsPage() {
   const { lang } = useLang()
   const { data: session } = useSession()
   const canEdit = useCanEdit()
+  const isAdminUser = (session?.user as any)?.role === 'ADMIN'
   const [duplicating, setDuplicating] = useState<string|null>(null)
 
   const [projects, setProjects] = useState<Project[]>([])
@@ -413,6 +415,11 @@ export default function ProjectsPage() {
                       <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:6}}>
                         <span style={{fontSize:11,color,fontWeight:700,background:`${color}18`,padding:'2px 8px',borderRadius:4}}>{project.code}</span>
                         <span className={`badge ${STATUS_BADGES[project.status]||'badge-gray'}`}>{statusLabel[project.status]||project.status}</span>
+                        {isAdminUser && (
+                          <span style={{fontSize:10.5,color:'var(--text3)',border:'1px solid var(--border)',padding:'1px 7px',borderRadius:4}}>
+                            {project.organization?.name ?? 'BD7D'}
+                          </span>
+                        )}
                       </div>
                       <h2 style={{fontFamily:'Syne,sans-serif',fontSize:14,fontWeight:700,color:'var(--text)',lineHeight:1.35,marginBottom:2}}>{project.name}</h2>
                       {project.description && <p style={{fontSize:12,color:'var(--text3)',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',display:'-webkit-box',WebkitLineClamp:1,WebkitBoxOrient:'vertical'}}>{project.description}</p>}

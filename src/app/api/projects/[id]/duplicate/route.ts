@@ -24,7 +24,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
         description: original.description ?? undefined,
         responsible: original.responsible,
         ownerId: user.id,
-        clientId: original.clientId ?? undefined,
+        // A cópia fica na mesma empresa do original.
+        organizationId: original.organizationId,
         startDate: original.startDate,
         endDate: original.endDate,
         status: 'NOT_STARTED',

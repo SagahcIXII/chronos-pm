@@ -1,94 +1,84 @@
-# Guia — Usuários, Clientes e Isolamento de Projetos
+# Guia — Empresas, Usuários e Isolamento de Projetos
 
-Este documento explica como o Chronos PM separa os projetos por usuário (multi-tenancy)
-e como cadastrar e gerenciar clientes.
+O Chronos PM separa os dados por **empresa cliente**. Cada empresa enxerga
+somente os próprios projetos; nunca os de outra empresa nem os internos da BD7D.
 
 ---
 
-## 1. Papéis de usuário
+## 1. Como funciona
 
-| Papel | Pode criar/editar? | O que enxerga | Uso típico |
+- Uma **empresa** (ex.: BioAmazon) agrupa usuários e projetos.
+- Todo usuário de uma empresa vê **todos os projetos daquela empresa**.
+- Projetos **sem empresa** são internos da BD7D.
+- O **ADMIN** (BD7D) não pertence a empresa e vê tudo.
+
+A regra é aplicada **no servidor** em toda leitura (`src/lib/access.ts`): quem
+tentar abrir um projeto de outra empresa, até pela URL ou pela API, recebe
+"não encontrado". Vale para tarefas, anexos, comentários, Curva S, Excel e e-mail.
+
+---
+
+## 2. Papéis
+
+| Papel | Pertence a | Vê | Edita |
 |---|---|---|---|
-| **ADMIN** | Sim | **Todos** os projetos (os seus e os de todos os clientes) | Você / BD7D |
-| **MANAGER** (Gerente) | Sim | **Apenas os projetos que ele mesmo criou** | Cliente que gere os próprios projetos |
-| **CLIENT** (Cliente) | Não (somente leitura; pode comentar nas tarefas) | Apenas os projetos que o admin atribuiu a ele | Cliente que só acompanha um projeto seu |
-| **VIEWER** | Não (somente leitura; pode comentar nas tarefas) | Apenas projetos onde é dono/atribuído | Acesso de leitura genérico |
+| **ADMIN** | — (BD7D) | todos os projetos | tudo; gerencia empresas e usuários |
+| **MANAGER** (Gerente) | uma empresa | projetos da empresa | todos os projetos da empresa; cria projetos nela |
+| **CLIENT** (Cliente) | uma empresa | projetos da empresa | não — só lê e **comenta** |
+| **VIEWER** (Visualizador) | uma empresa | projetos da empresa | não — só lê e **comenta** |
 
-A regra de visibilidade é aplicada **no servidor** (não é apenas esconder na tela):
-quem não é ADMIN só recebe da API os projetos onde é **dono** (`ownerId`) ou **cliente**
-(`clientId`). Não há como burlar chamando a API diretamente.
+Um MANAGER/CLIENT/VIEWER **sem empresa** é tratado como interno da BD7D e vê
+apenas os projetos internos que ele mesmo criou.
 
-Garantias:
-- O ADMIN vê tudo.
-- Um MANAGER **não vê** os projetos do admin nem os de outros managers.
-- Dois clientes MANAGER ficam **isolados entre si**.
+Projeto criado por um MANAGER entra automaticamente na empresa dele. Só o
+ADMIN pode mover um projeto de empresa.
 
 ---
 
-## 2. Qual papel usar para cada cenário
+## 3. Cadastrar uma nova empresa cliente
 
-### Cenário A — Cliente gerencia os próprios projetos → **MANAGER**
-O cliente cria e edita os projetos dele, com Gantt, tarefas, curva S e relatórios,
-mas **não vê** os seus projetos internos.
+1. Entre como **ADMIN** → **Usuários**.
+2. Na seção **Empresas**, digite o nome e clique em **Criar empresa**.
+3. Em **Novo Usuário**, preencha nome, e-mail, senha inicial, **Papel** e
+   selecione a **Empresa**.
+   - Quem vai atualizar o cronograma → **Gerente**.
+   - Quem só acompanha → **Cliente** ou **Visualizador**.
+4. Passe o e-mail e a senha inicial ao usuário (ele troca em *Trocar senha*).
 
-### Cenário B — Cliente só acompanha um projeto que você gerencia → **CLIENT**
-Você cria o projeto, atribui o cliente no campo **"Cliente"** do formulário de projeto,
-e ele acessa apenas para **visualizar** (somente leitura). O campo "Cliente" só aparece
-para o ADMIN.
-
----
-
-## 3. Como cadastrar um cliente (passo a passo)
-
-1. Faça login como **ADMIN**.
-2. Vá em **Projetos → 👥 Usuários** (o botão só aparece para admin).
-3. Clique em **➕ Novo Usuário** e preencha:
-   - **Nome** e **E-mail** (será o login).
-   - **Senha** inicial (mínimo 6 caracteres) — o cliente pode trocar depois.
-   - **Papel**: escolha **Gerente** (cenário A) ou **Cliente** (cenário B).
-4. Salve. Passe o e-mail e a senha inicial ao cliente.
-
-### Se escolheu **Cliente** (cenário B), atribua o projeto:
-1. Vá em **Projetos**, edite o projeto desejado.
-2. No campo **"Cliente (quem pode visualizar)"**, selecione o usuário.
-3. Salve. A partir daí, aquele cliente vê esse projeto (somente leitura).
+Para um projeto já existente aparecer para a empresa: **Projetos → editar →
+Empresa**.
 
 ---
 
-## 4. O que o cliente vê ao entrar
+## 4. Desativar acesso
 
-- **MANAGER sem projetos ainda:** o painel mostra "Nenhum projeto disponível" com o botão
-  **Ir para Projetos**. Ele cria o primeiro projeto e começa a gestão.
-- **MANAGER/CLIENT com projetos:** entra direto no painel do projeto dele.
-- Nenhum cliente tem acesso à tela de **Usuários** (exclusiva do admin).
+- **Um usuário:** Usuários → **Desativar**. O acesso cai na próxima ação dele.
+- **Uma empresa inteira:** Empresas → **Desativar**. Todos os usuários dela
+  perdem o acesso imediatamente; os projetos e dados são preservados e voltam
+  ao reativar.
 
----
-
-## 5. Gerenciar usuários existentes
-
-Na tela **Usuários** o admin pode:
-- **Editar** nome, papel e redefinir senha (deixe a senha em branco para mantê-la).
-- **Ativar/Desativar** um usuário. Um usuário inativo não consegue fazer login.
-- A coluna **Projetos** mostra quantos projetos o usuário possui (ou, para CLIENT,
-  quantos lhe foram atribuídos).
-
-Proteções automáticas: você **não** consegue desativar nem rebaixar a **própria** conta
-de admin (evita perder o acesso administrativo).
+Proteções: o admin não consegue desativar nem rebaixar a própria conta.
 
 ---
 
-## 6. Boas práticas de segurança
+## 5. Migrar um cliente que já usava o sistema sozinho
 
-- **Troque a senha padrão do admin** (`chronos2025`) logo no primeiro acesso em produção —
-  edite sua própria conta na tela de Usuários.
-- Use senhas iniciais fortes ao criar clientes e oriente-os a trocar.
-- Mantenha o papel **VIEWER** como padrão para acessos que não devem editar nada.
-- Só o ADMIN deve permanecer com papel ADMIN.
+Antes das empresas, cada cliente via apenas os projetos que ele mesmo criou.
+Para colocá-lo (e os projetos dele) em uma empresa:
+
+```bash
+# simula e mostra o que será feito
+npm run db:assign-org -- --org "BioAmazon" --owner abucker@gmail.com
+# aplica
+npm run db:assign-org -- --org "BioAmazon" --owner abucker@gmail.com --apply
+```
+
+Depois, cadastre os demais usuários da empresa pela tela **Usuários**.
 
 ---
 
-## 7. Resumo rápido
+## 6. Boas práticas
 
-- **Você quer que o cliente gerencie sozinho e não veja seus projetos?** → papel **MANAGER**.
-- **Você quer que o cliente só visualize um projeto seu?** → papel **CLIENT** + campo "Cliente".
-- **Admin sempre vê tudo; clientes veem só o que é deles.** Garantido no servidor.
+- Troque a senha padrão do admin no primeiro acesso em produção.
+- Dê papel **Gerente** só a quem deve alterar o cronograma.
+- Só a equipe BD7D deve ter papel **ADMIN**.

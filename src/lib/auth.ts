@@ -24,10 +24,14 @@ export const authOptions: NextAuthOptions = {
 
         const user = await prisma.user.findUnique({
           where: { email: credentials.email.toLowerCase().trim() },
+          include: { organization: { select: { name: true, active: true } } },
         })
 
         if (!user || !user.active) {
           throw new Error('Usuário não encontrado ou inativo.')
+        }
+        if (user.organization && !user.organization.active) {
+          throw new Error('Acesso da empresa está desativado.')
         }
 
         const passwordMatch = await bcrypt.compare(credentials.password, user.password)
@@ -40,6 +44,7 @@ export const authOptions: NextAuthOptions = {
           name: user.name,
           email: user.email,
           role: user.role,
+          organizationName: user.organization?.name ?? null,
         }
       },
     }),
@@ -49,6 +54,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id
         token.role = (user as any).role
+        token.organizationName = (user as any).organizationName ?? null
       }
       return token
     },
@@ -56,6 +62,8 @@ export const authOptions: NextAuthOptions = {
       if (token) {
         session.user.id = token.id as string
         session.user.role = token.role as string
+        // Só para exibição; o acesso é sempre conferido no banco (access.ts).
+        session.user.organizationName = (token.organizationName as string | null) ?? null
       }
       return session
     },
@@ -70,6 +78,7 @@ declare module 'next-auth' {
       name: string
       email: string
       role: string
+      organizationName: string | null
     }
   }
 }

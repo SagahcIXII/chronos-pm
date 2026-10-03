@@ -7,6 +7,19 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Empresa cliente (multi-tenancy). Usuários e projetos de uma empresa só
+// enxergam/acessam dados da própria empresa. Sem empresa = BD7D (interno).
+model Organization {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  active    Boolean   @default(true) // inativa = usuários dela não acessam
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  users     User[]
+  projects  Project[]
+  @@map("organizations")
+}
+
 model User {
   id        String   @id @default(cuid())
   name      String
@@ -14,12 +27,15 @@ model User {
   password  String
   role      String   @default("VIEWER") // ADMIN | MANAGER | CLIENT | VIEWER
   active    Boolean  @default(true)
+  organizationId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  organization   Organization? @relation(fields: [organizationId], references: [id])
   projects       Project[] @relation("ProjectOwner")
   clientProjects Project[] @relation("ProjectClient")
   taskComments   TaskComment[]
   taskHistory    TaskHistory[]
+  @@index([organizationId])
   @@map("users")
 }
 
@@ -31,8 +47,11 @@ model Project {
   responsible  String
   ownerId      String
   // ── Multi-tenancy ─────────────────────────────────────────
-  // Cliente externo autorizado a VER este projeto (somente leitura).
-  // Nulo = projeto interno, visível apenas para ADMIN/dono.
+  // Empresa dona do projeto: todos os usuários dela acessam o projeto.
+  // Nulo = projeto interno da BD7D (ADMIN e dono).
+  organizationId String?
+  // OBSOLETO — substituído por organizationId. Mantido só para não apagar a
+  // coluna no `db push`; não é mais lido nem gravado pela aplicação.
   clientId     String?
   startDate    DateTime
   endDate      DateTime
@@ -44,11 +63,13 @@ model Project {
   updatedAt    DateTime @updatedAt
   owner        User     @relation("ProjectOwner", fields: [ownerId], references: [id])
   client       User?    @relation("ProjectClient", fields: [clientId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
   tasks        Task[]
   baseline     Baseline?
   snapshots    ProjectSnapshot[]
   @@index([ownerId])
   @@index([clientId])
+  @@index([organizationId])
   @@map("projects")
 }
 

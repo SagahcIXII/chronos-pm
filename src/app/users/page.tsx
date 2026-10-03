@@ -4,12 +4,17 @@ import { useRouter } from 'next/navigation'
 import { useLang, LangSwitcher } from '@/lib/i18n'
 import { signOut, useSession } from 'next-auth/react'
 import { ThemeToggle } from '@/components/ThemeToggle'
-import { Plus, Pencil, X, Save, Loader2, AlertCircle, FolderKanban, ArrowLeft, LogOut } from 'lucide-react'
+import { Plus, Pencil, X, Save, Loader2, AlertCircle, FolderKanban, ArrowLeft, LogOut, Building2 } from 'lucide-react'
 
 interface UserRow {
   id: string; name: string; email: string; role: string; active: boolean
   createdAt: string
-  _count?: { projects: number; clientProjects: number }
+  organization?: { id: string; name: string; active: boolean } | null
+}
+
+interface OrgRow {
+  id: string; name: string; active: boolean; createdAt: string
+  _count: { users: number; projects: number }
 }
 
 const ROLES = ['ADMIN', 'MANAGER', 'CLIENT', 'VIEWER'] as const
@@ -31,16 +36,17 @@ const LABEL = {
   textTransform: 'uppercase' as const, letterSpacing: '0.5px', display: 'block' as const, marginBottom: 5,
 }
 
-function UserModal({ user, onClose, onSave, lang }: {
-  user?: UserRow | null; onClose: () => void; onSave: () => void; lang: string
+function UserModal({ user, orgs, onClose, onSave, lang }: {
+  user?: UserRow | null; orgs: OrgRow[]; onClose: () => void; onSave: () => void; lang: string
 }) {
   const isEdit = !!user
   const [form, setForm] = useState({
     name: user?.name ?? '',
     email: user?.email ?? '',
     password: '',
-    role: user?.role ?? 'CLIENT',
+    role: user?.role ?? 'MANAGER',
     active: user?.active ?? true,
+    organizationId: user?.organization?.id ?? '',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -58,9 +64,10 @@ function UserModal({ user, onClose, onSave, lang }: {
     try {
       const url = isEdit ? `/api/users/${user!.id}` : '/api/users'
       const method = isEdit ? 'PATCH' : 'POST'
+      const organizationId = form.role === 'ADMIN' ? null : (form.organizationId || null)
       const body: any = isEdit
-        ? { name: form.name, role: form.role, active: form.active }
-        : { name: form.name, email: form.email, password: form.password, role: form.role }
+        ? { name: form.name, role: form.role, active: form.active, organizationId }
+        : { name: form.name, email: form.email, password: form.password, role: form.role, organizationId }
       // Reset de senha opcional na edição.
       if (isEdit && form.password) {
         if (form.password.length < 6) { setError(lang === 'pt' ? 'Senha deve ter ao menos 6 caracteres.' : 'Password must be at least 6 characters.'); setSaving(false); return }
@@ -108,6 +115,20 @@ function UserModal({ user, onClose, onSave, lang }: {
                 placeholder={isEdit ? (lang === 'pt' ? 'deixe em branco p/ manter' : 'blank to keep') : '••••••'} />
             </div>
           </div>
+          <div>
+            <label style={LABEL}>{lang === 'pt' ? 'Empresa' : 'Company'}</label>
+            <select style={{ ...INPUT, cursor: form.role === 'ADMIN' ? 'not-allowed' : 'pointer', opacity: form.role === 'ADMIN' ? 0.6 : 1 }}
+              value={form.role === 'ADMIN' ? '' : form.organizationId} disabled={form.role === 'ADMIN'}
+              onChange={e => setForm(p => ({ ...p, organizationId: e.target.value }))}>
+              <option value="">{lang === 'pt' ? '— BD7D (interno) —' : '— BD7D (internal) —'}</option>
+              {orgs.map(o => <option key={o.id} value={o.id}>{o.name}{o.active ? '' : (lang === 'pt' ? ' (inativa)' : ' (inactive)')}</option>)}
+            </select>
+            <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 5 }}>
+              {form.role === 'ADMIN'
+                ? (lang === 'pt' ? 'Administradores não pertencem a empresa: veem todos os projetos.' : 'Admins belong to no company: they see all projects.')
+                : (lang === 'pt' ? 'O usuário verá apenas os projetos desta empresa. Gerentes editam; Cliente/Visualizador só leem e comentam.' : 'The user will only see this company\'s projects. Managers edit; Client/Viewer read and comment.')}
+            </p>
+          </div>
           {isEdit && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: 'var(--text2)' }}>
               <input type="checkbox" checked={form.active} onChange={e => setForm(p => ({ ...p, active: e.target.checked }))} />
@@ -136,6 +157,9 @@ export default function UsersPage() {
   const role = (session?.user as any)?.role
 
   const [users, setUsers] = useState<UserRow[]>([])
+  const [orgs, setOrgs] = useState<OrgRow[]>([])
+  const [newOrgName, setNewOrgName] = useState('')
+  const [orgError, setOrgError] = useState('')
   const [loading, setLoading] = useState(true)
   const [showNew, setShowNew] = useState(false)
   const [editUser, setEditUser] = useState<UserRow | null>(null)
@@ -143,10 +167,32 @@ export default function UsersPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/users')
-      if (res.ok) { const j = await res.json(); setUsers(j.data ?? []) }
+      const [ru, ro] = await Promise.all([fetch('/api/users'), fetch('/api/organizations')])
+      if (ru.ok) { const j = await ru.json(); setUsers(j.data ?? []) }
+      if (ro.ok) { const j = await ro.json(); setOrgs(j.data ?? []) }
     } finally { setLoading(false) }
   }, [])
+
+  const orgRequest = async (url: string, method: string, body: object) => {
+    setOrgError('')
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    if (!res.ok) { const d = await res.json().catch(() => ({})); setOrgError(d.error || (lang === 'pt' ? 'Erro ao salvar empresa' : 'Error saving company')); return false }
+    await load(); return true
+  }
+  const createOrg = async () => {
+    if (newOrgName.trim().length < 2) return
+    if (await orgRequest('/api/organizations', 'POST', { name: newOrgName.trim() })) setNewOrgName('')
+  }
+  const renameOrg = async (o: OrgRow) => {
+    const name = prompt(lang === 'pt' ? 'Novo nome da empresa:' : 'New company name:', o.name)
+    if (name && name.trim() && name.trim() !== o.name) await orgRequest(`/api/organizations/${o.id}`, 'PATCH', { name: name.trim() })
+  }
+  const toggleOrg = async (o: OrgRow) => {
+    if (o.active && !confirm(lang === 'pt'
+      ? `Desativar "${o.name}"? Os ${o._count.users} usuário(s) dela perdem o acesso imediatamente. Os dados são preservados.`
+      : `Deactivate "${o.name}"? Its ${o._count.users} user(s) lose access immediately. Data is preserved.`)) return
+    await orgRequest(`/api/organizations/${o.id}`, 'PATCH', { active: !o.active })
+  }
 
   useEffect(() => { load() }, [load])
 
@@ -173,8 +219,8 @@ export default function UsersPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column' }}>
-      {showNew && <UserModal lang={lang} onClose={() => setShowNew(false)} onSave={() => { setShowNew(false); load() }} />}
-      {editUser && <UserModal lang={lang} user={editUser} onClose={() => setEditUser(null)} onSave={() => { setEditUser(null); load() }} />}
+      {showNew && <UserModal lang={lang} orgs={orgs} onClose={() => setShowNew(false)} onSave={() => { setShowNew(false); load() }} />}
+      {editUser && <UserModal lang={lang} orgs={orgs} user={editUser} onClose={() => setEditUser(null)} onSave={() => { setEditUser(null); load() }} />}
 
       {/* Header */}
       <header style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '0 32px', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -195,6 +241,62 @@ export default function UsersPage() {
       {/* Body */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 32 }}>
         <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+          {/* Empresas */}
+          <div style={{ marginBottom: 32 }}>
+            <h1 style={{ fontFamily: 'Syne,sans-serif', fontSize: 26, fontWeight: 800, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Building2 size={22} /> {lang === 'pt' ? 'Empresas' : 'Companies'}
+            </h1>
+            <p style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4, marginBottom: 14 }}>
+              {lang === 'pt' ? 'Cada empresa só enxerga os próprios projetos. Projetos sem empresa são internos da BD7D.' : 'Each company only sees its own projects. Projects without a company are BD7D internal.'}
+            </p>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <input style={{ ...INPUT, maxWidth: 320 }} value={newOrgName} onChange={e => setNewOrgName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') createOrg() }} placeholder={lang === 'pt' ? 'Nome da nova empresa' : 'New company name'} />
+              <button onClick={createOrg} disabled={newOrgName.trim().length < 2} className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Plus size={15} /> {lang === 'pt' ? 'Criar empresa' : 'Create company'}
+              </button>
+            </div>
+            {orgError && <p style={{ fontSize: 12, color: '#f87171', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}><AlertCircle size={14} /> {orgError}</p>}
+            {!loading && (
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: 'var(--surface2)', textAlign: 'left' }}>
+                      {[lang === 'pt' ? 'Empresa' : 'Company', lang === 'pt' ? 'Usuários' : 'Users', lang === 'pt' ? 'Projetos' : 'Projects', 'Status', ''].map((h, i) => (
+                        <th key={i} style={{ padding: '12px 16px', color: 'var(--text3)', fontWeight: 600, textAlign: i === 4 ? 'right' : 'left' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orgs.map(o => (
+                      <tr key={o.id} style={{ borderTop: '1px solid var(--border)', opacity: o.active ? 1 : 0.5 }}>
+                        <td style={{ padding: '12px 16px', color: 'var(--text)', fontWeight: 500 }}>{o.name}</td>
+                        <td style={{ padding: '12px 16px', color: 'var(--text3)' }}>{o._count.users}</td>
+                        <td style={{ padding: '12px 16px', color: 'var(--text3)' }}>{o._count.projects}</td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: o.active ? '#22c55e' : '#f87171', background: o.active ? 'rgba(34,197,94,0.12)' : 'rgba(248,113,113,0.12)', padding: '2px 8px', borderRadius: 5 }}>
+                            {o.active ? (lang === 'pt' ? 'Ativa' : 'Active') : (lang === 'pt' ? 'Inativa' : 'Inactive')}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <button onClick={() => renameOrg(o)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', color: 'var(--text2)', fontSize: 12, marginRight: 8 }}>
+                            {lang === 'pt' ? 'Renomear' : 'Rename'}
+                          </button>
+                          <button onClick={() => toggleOrg(o)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', color: o.active ? '#f87171' : '#22c55e', fontSize: 12 }}>
+                            {o.active ? (lang === 'pt' ? 'Desativar' : 'Deactivate') : (lang === 'pt' ? 'Ativar' : 'Activate')}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {orgs.length === 0 && (
+                      <tr><td colSpan={5} style={{ padding: 24, textAlign: 'center', color: 'var(--text3)' }}>{lang === 'pt' ? 'Nenhuma empresa cadastrada.' : 'No companies yet.'}</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
             <div>
               <h1 style={{ fontFamily: 'Syne,sans-serif', fontSize: 26, fontWeight: 800, color: 'var(--text)' }}>{lang === 'pt' ? 'Usuários' : 'Users'}</h1>
@@ -215,7 +317,7 @@ export default function UsersPage() {
                     <th style={{ padding: '12px 16px', color: 'var(--text3)', fontWeight: 600 }}>{lang === 'pt' ? 'Nome' : 'Name'}</th>
                     <th style={{ padding: '12px 16px', color: 'var(--text3)', fontWeight: 600 }}>E-mail</th>
                     <th style={{ padding: '12px 16px', color: 'var(--text3)', fontWeight: 600 }}>{lang === 'pt' ? 'Papel' : 'Role'}</th>
-                    <th style={{ padding: '12px 16px', color: 'var(--text3)', fontWeight: 600 }}>{lang === 'pt' ? 'Projetos' : 'Projects'}</th>
+                    <th style={{ padding: '12px 16px', color: 'var(--text3)', fontWeight: 600 }}>{lang === 'pt' ? 'Empresa' : 'Company'}</th>
                     <th style={{ padding: '12px 16px', color: 'var(--text3)', fontWeight: 600 }}>Status</th>
                     <th style={{ padding: '12px 16px', color: 'var(--text3)', fontWeight: 600, textAlign: 'right' }}>{lang === 'pt' ? 'Ações' : 'Actions'}</th>
                   </tr>
@@ -232,8 +334,9 @@ export default function UsersPage() {
                             {lang === 'pt' ? rl.pt : rl.en}
                           </span>
                         </td>
-                        <td style={{ padding: '12px 16px', color: 'var(--text3)' }}>
-                          {u.role === 'CLIENT' ? (u._count?.clientProjects ?? 0) : (u._count?.projects ?? 0)}
+                        <td style={{ padding: '12px 16px', color: u.organization ? 'var(--text2)' : 'var(--text3)' }}>
+                          {u.role === 'ADMIN' ? (lang === 'pt' ? 'Todas' : 'All') : (u.organization?.name ?? 'BD7D')}
+                          {u.organization && !u.organization.active && <span style={{ color: '#f87171', fontSize: 11 }}> {lang === 'pt' ? '(inativa)' : '(inactive)'}</span>}
                         </td>
                         <td style={{ padding: '12px 16px' }}>
                           <span style={{ fontSize: 11, fontWeight: 700, color: u.active ? '#22c55e' : '#f87171', background: u.active ? 'rgba(34,197,94,0.12)' : 'rgba(248,113,113,0.12)', padding: '2px 8px', borderRadius: 5 }}>

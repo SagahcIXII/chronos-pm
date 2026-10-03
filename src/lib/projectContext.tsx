@@ -51,7 +51,7 @@ function mapApiProject(p: any): Project {
     code: p.code ?? '',
     name: p.name ?? '',
     nameEn: p.name ?? '',
-    client: p.client?.name ?? p.responsible ?? '',
+    client: p.organization?.name ?? p.responsible ?? '',
     manager: p.responsible ?? '',
     responsible: p.responsible ?? '',
     startDate: typeof p.startDate === 'string' ? p.startDate : new Date(p.startDate).toISOString(),

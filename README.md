@@ -60,6 +60,7 @@ npm run db:push      # aplica o schema (prisma db push)
 npm run db:seed      # dados de demonstração
 npm run db:studio    # Prisma Studio
 npm run db:recalc    # recalcula progresso/status de grupos e projetos
+npm run db:assign-org -- --org "Empresa" --owner email   # vincula cliente existente (simula; --apply grava)
 npm run db:reset     # ⚠ APAGA o banco e repovoa com o seed
 ```
 
@@ -103,17 +104,17 @@ Relatório PDF, Excel, e-mail e banco usam as mesmas funções).
 
 ---
 
-## Perfis e acesso
+## Perfis e acesso (isolamento por empresa)
 
-| Papel | Edita? | Vê |
-|---|---|---|
-| ADMIN | sim | todos os projetos; gerencia usuários |
-| MANAGER | sim | projetos que criou ou que lhe foram atribuídos |
-| CLIENT | não (pode comentar) | projetos atribuídos a ele |
-| VIEWER | não (pode comentar) | projetos onde é dono/atribuído |
+| Papel | Pertence a | Vê | Edita |
+|---|---|---|---|
+| ADMIN | — (BD7D) | todos os projetos | tudo; gerencia empresas e usuários |
+| MANAGER | uma empresa | projetos da empresa | todos os projetos da empresa |
+| CLIENT / VIEWER | uma empresa | projetos da empresa | não (pode comentar) |
 
-As regras são aplicadas no servidor (`src/lib/access.ts`). Detalhes e passo a
-passo de cadastro de clientes em [GUIA-CLIENTES.md](GUIA-CLIENTES.md).
+Cada empresa só enxerga os próprios projetos; projetos sem empresa são internos
+da BD7D. As regras são aplicadas no servidor (`src/lib/access.ts`). Passo a passo
+de cadastro e migração em [GUIA-CLIENTES.md](GUIA-CLIENTES.md).
 
 ---
 
@@ -124,11 +125,12 @@ prisma/
   schema.prisma          # modelo do banco (PostgreSQL)
   seed.ts                # dados de demonstração
   recalc-rollups.ts      # npm run db:recalc
+  assign-organization.ts # npm run db:assign-org
 src/
   app/
     auth/login/          # login
     projects/            # lista de projetos (criar, editar, duplicar, arquivar)
-    users/               # gestão de usuários (ADMIN)
+    users/               # gestão de empresas e usuários (ADMIN)
     account/             # trocar a própria senha
     dashboard/           # área do projeto ativo
       page.tsx           #   dashboard executivo

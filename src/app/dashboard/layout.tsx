@@ -121,7 +121,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
             <div style={{flex:1,minWidth:0}}>
               <p style={{fontSize:12.5,fontWeight:500,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{session?.user?.name??'Usuário'}</p>
-              <p style={{fontSize:10.5,color:'var(--text3)'}}>{(session?.user as any)?.role??'Admin'}</p>
+              <p style={{fontSize:10.5,color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{(session?.user as any)?.role??'Admin'}{session?.user?.organizationName ? ` · ${session.user.organizationName}` : ''}</p>
             </div>
             <button onClick={()=>signOut({callbackUrl:'/auth/login'})}
               style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',display:'flex',alignItems:'center',padding:4,flexShrink:0}} title="Sair"><LogOut size={16} /></button>

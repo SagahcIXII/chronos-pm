@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { requireUser, canEdit, assertProjectAccess, accessErrorResponse } from '@/lib/access'
+import { requireUser, isAdmin, assertProjectAccess, resolveProjectOrganization, accessErrorResponse } from '@/lib/access'
 
 type Params = { params: { id: string } }
 
@@ -16,7 +16,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       where: { id: params.id },
       include: {
         owner: { select: { id: true, name: true, email: true } },
-        client: { select: { id: true, name: true, email: true } },
+        organization: { select: { id: true, name: true } },
         baseline: true,
         tasks: {
           include: {
@@ -44,7 +44,7 @@ const UpdateProjectSchema = z.object({
   status: z.string().optional(),
   progress: z.number().min(0).max(100).optional(),
   observations: z.string().max(2000).nullable().optional(),
-  clientId: z.string().nullable().optional(),
+  organizationId: z.string().nullable().optional(),
 })
 
 // PUT /api/projects/[id] — atualização (ADMIN/MANAGER com acesso).
@@ -59,18 +59,13 @@ export async function PUT(req: NextRequest, { params }: Params) {
     }
     const d = parsed.data
 
-    // Só valida/autoriza o clientId quando ele REALMENTE muda — assim um
-    // MANAGER pode editar os demais campos sem esbarrar nesta regra.
-    const clientChanged = d.clientId !== undefined && (d.clientId || null) !== (existing.clientId || null)
-    if (clientChanged) {
-      if (user.role !== 'ADMIN') {
-        return NextResponse.json({ error: 'Apenas o administrador pode alterar o cliente' }, { status: 403 })
-      }
-      if (d.clientId) {
-        const client = await prisma.user.findUnique({ where: { id: d.clientId } })
-        if (!client) return NextResponse.json({ error: 'Cliente informado não existe' }, { status: 400 })
-      }
+    // Só o ADMIN move um projeto de empresa. Para os demais o campo é
+    // ignorado se não mudar, e recusado se tentar mudar.
+    const orgChanged = d.organizationId !== undefined && (d.organizationId || null) !== (existing.organizationId || null)
+    if (orgChanged && !isAdmin(user)) {
+      return NextResponse.json({ error: 'Apenas o administrador pode alterar a empresa do projeto' }, { status: 403 })
     }
+    const organizationId = orgChanged ? await resolveProjectOrganization(user, d.organizationId) : undefined
 
     const project = await prisma.project.update({
       where: { id: params.id },
@@ -83,7 +78,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
         ...(d.status && { status: d.status }),
         ...(d.progress !== undefined && { progress: d.progress }),
         ...(d.observations !== undefined && { observations: d.observations }),
-        ...(d.clientId !== undefined && { clientId: d.clientId || null }),
+        ...(organizationId !== undefined && { organizationId }),
       },
     })
     return NextResponse.json({ data: project })

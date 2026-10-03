@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
-import { requireUser, isAdmin, accessErrorResponse } from '@/lib/access'
+import { requireUser, isAdmin, resolveUserOrganization, accessErrorResponse } from '@/lib/access'
 
 type Params = { params: { id: string } }
 
@@ -13,6 +13,8 @@ const UpdateUserSchema = z.object({
   active: z.boolean().optional(),
   // Reset de senha opcional.
   password: z.string().min(6).max(100).optional(),
+  // null = sem empresa (interno BD7D).
+  organizationId: z.string().nullable().optional(),
 })
 
 // PATCH /api/users/[id] — edita nome/papel/ativo/senha (ADMIN).
@@ -37,6 +39,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       if (role && role !== 'ADMIN') return NextResponse.json({ error: 'Você não pode rebaixar a própria conta' }, { status: 400 })
     }
 
+    // Empresa: recalcula quando muda o papel ou a empresa (ADMIN fica sem empresa).
+    const finalRole = role ?? target.role
+    const orgChanged = parsed.data.organizationId !== undefined || role !== undefined
+    const organizationId = orgChanged
+      ? await resolveUserOrganization(finalRole, parsed.data.organizationId !== undefined ? parsed.data.organizationId : target.organizationId)
+      : undefined
+
     const updated = await prisma.user.update({
       where: { id: params.id },
       data: {
@@ -44,8 +53,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         ...(role && { role }),
         ...(active !== undefined && { active }),
         ...(password && { password: await bcrypt.hash(password, 12) }),
+        ...(organizationId !== undefined && { organizationId }),
       },
-      select: { id: true, name: true, email: true, role: true, active: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, active: true, createdAt: true, organizationId: true },
     })
     return NextResponse.json({ data: updated })
   } catch (e) {
