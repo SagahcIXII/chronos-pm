@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { computeWeightedProgress } from '@/lib/schedule'
+import { recalculateProjectRollups } from '@/lib/rollup'
 import { requireUser, assertTaskAccess, assertTaskRelations, accessErrorResponse } from '@/lib/access'
 
 type Params = { params: { id: string } }
@@ -106,7 +106,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       await prisma.taskHistory.createMany({ data: historyEntries })
     }
 
-    await recalculateProjectProgress(current.projectId)
+    await recalculateProjectRollups(current.projectId)
     return NextResponse.json({ data: task })
   } catch (e) {
     const { error, status } = accessErrorResponse(e)
@@ -127,7 +127,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
       where: { OR: [{ successorId: params.id }, { predecessorId: params.id }] },
     })
     await prisma.task.delete({ where: { id: params.id } })
-    await recalculateProjectProgress(task.projectId)
+    await recalculateProjectRollups(task.projectId)
 
     return NextResponse.json({ message: 'Tarefa excluída' })
   } catch (e) {
@@ -166,10 +166,4 @@ function buildHistoryEntries(current: any, updates: any, authorId: string, taskI
     entries.push({ taskId, authorId, changeType: 'UPDATED', note: `Campos atualizados: ${otherKeys.join(', ')}` })
   }
   return entries
-}
-
-async function recalculateProjectProgress(projectId: string) {
-  const tasks = await prisma.task.findMany({ where: { projectId } })
-  const progress = computeWeightedProgress(tasks)
-  await prisma.project.update({ where: { id: projectId }, data: { progress } })
 }

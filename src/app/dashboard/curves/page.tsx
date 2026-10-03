@@ -7,6 +7,7 @@ import {
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
 import { executedAt, workItems } from '@/lib/progress'
+import { useCanEdit } from '@/lib/useCanEdit'
 import { Calendar, AlertTriangle, CheckCircle2, Pin, ChevronUp, ChevronDown, Loader2, Plus, X } from 'lucide-react'
 
 interface Task {
@@ -247,6 +248,7 @@ const CustomTooltip = ({ active, payload, label, lang }: any) => {
 export default function CurveSPage() {
   const { lang, t } = useLang()
   const { activeProject } = useProject()
+  const canEdit = useCanEdit()
   const c = t.curves
 
   const [tasks, setTasks] = useState<Task[]>([])
@@ -423,13 +425,13 @@ export default function CurveSPage() {
             </div>
             {showSnapPanel && (
               <div className="card-body" style={{display:'flex',flexDirection:'column',gap:12}}>
-                <p style={{fontSize:12,color:'var(--text3)'}}>
+                {canEdit && <p style={{fontSize:12,color:'var(--text3)'}}>
                   {lang==='pt'
                     ?'Registre o progresso real de semanas anteriores. Esses valores substituem o cálculo automático no gráfico, permitindo representar corretamente o histórico.'
                     :'Record actual progress from previous weeks. These values override automatic calculation in the chart, correctly representing history.'}
-                </p>
+                </p>}
                 {/* Linha de input */}
-                <div style={{display:'grid',gridTemplateColumns:'140px 100px 1fr auto',gap:8,alignItems:'end'}}>
+                {canEdit && <div style={{display:'grid',gridTemplateColumns:'140px 100px 1fr auto',gap:8,alignItems:'end'}}>
                   <div>
                     <label style={{fontSize:11,fontWeight:600,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px',display:'block',marginBottom:4}}>
                       {lang==='pt'?'Data':'Date'}
@@ -455,7 +457,7 @@ export default function CurveSPage() {
                     style={{padding:'8px 16px',fontSize:13,height:38,alignSelf:'end',display:'inline-flex',alignItems:'center',gap:6}}>
                     {snapSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}{!snapSaving && (lang==='pt'?'Adicionar':'Add')}
                   </button>
-                </div>
+                </div>}
                 {/* Lista de snapshots */}
                 {snapshots.length > 0 && (
                   <div style={{borderTop:'1px solid var(--border)',paddingTop:12}}>
@@ -471,10 +473,12 @@ export default function CurveSPage() {
                         </span>
                         <span style={{fontSize:13,color:'#4ade80',fontWeight:700}}>{s.executed}%</span>
                         <span style={{fontSize:12,color:'var(--text3)'}}>{s.note || '—'}</span>
-                        <button onClick={()=>removeSnapshot(s.id)} title={lang==='pt'?'Remover':'Remove'}
-                          style={{color:'#f87171',background:'none',border:'none',cursor:'pointer',padding:'2px 6px',display:'flex',alignItems:'center'}}>
-                          <X size={14} />
-                        </button>
+                        {canEdit ? (
+                          <button onClick={()=>removeSnapshot(s.id)} title={lang==='pt'?'Remover':'Remove'}
+                            style={{color:'#f87171',background:'none',border:'none',cursor:'pointer',padding:'2px 6px',display:'flex',alignItems:'center'}}>
+                            <X size={14} />
+                          </button>
+                        ) : <span />}
                       </div>
                     ))}
                   </div>

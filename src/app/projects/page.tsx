@@ -5,6 +5,7 @@ import { useProject } from '@/lib/projectContext'
 import { useLang, LangSwitcher } from '@/lib/i18n'
 import { signOut, useSession } from 'next-auth/react'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { useCanEdit } from '@/lib/useCanEdit'
 import { Plus, Pencil, Trash2, X, Save, AlertCircle, Loader2, Users, KeyRound, FolderOpen, Archive, ArrowRight } from 'lucide-react'
 
 interface Project {
@@ -234,6 +235,7 @@ export default function ProjectsPage() {
   const { setActiveProject } = useProject()
   const { lang } = useLang()
   const { data: session } = useSession()
+  const canEdit = useCanEdit()
 
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
@@ -336,9 +338,11 @@ export default function ProjectsPage() {
               {loading ? '...' : `${projects.length} ${lang==='pt'?'projetos cadastrados':'registered projects'}`}
             </p>
           </div>
-          <button onClick={()=>setShowNewModal(true)} className="btn btn-primary" style={{padding:'10px 20px',fontSize:14,display:'inline-flex',alignItems:'center',gap:7}}>
-            <Plus size={16}/> {lang==='pt'?'Novo Projeto':'New Project'}
-          </button>
+          {canEdit && (
+            <button onClick={()=>setShowNewModal(true)} className="btn btn-primary" style={{padding:'10px 20px',fontSize:14,display:'inline-flex',alignItems:'center',gap:7}}>
+              <Plus size={16}/> {lang==='pt'?'Novo Projeto':'New Project'}
+            </button>
+          )}
         </div>
 
         {/* Stats */}
@@ -370,7 +374,9 @@ export default function ProjectsPage() {
               <div style={{gridColumn:'1/-1',textAlign:'center',padding:64,color:'var(--text3)'}}>
                 <div style={{marginBottom:12,display:'flex',justifyContent:'center',color:'var(--text3)'}}><FolderOpen size={44}/></div>
                 <p style={{fontSize:16,fontWeight:600,marginBottom:6}}>{lang==='pt'?'Nenhum projeto cadastrado':'No projects registered'}</p>
-                <p style={{fontSize:13}}>{lang==='pt'?'Clique em "Novo Projeto" para começar.':'Click "New Project" to get started.'}</p>
+                <p style={{fontSize:13}}>{canEdit
+                  ? (lang==='pt'?'Clique em "Novo Projeto" para começar.':'Click "New Project" to get started.')
+                  : (lang==='pt'?'Nenhum projeto foi compartilhado com você ainda.':'No projects have been shared with you yet.')}</p>
               </div>
             )}
             {projects.map(project => {
@@ -427,12 +433,14 @@ export default function ProjectsPage() {
                       style={{flex:1,background:color,color:'white',border:'none',padding:'9px',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:13,display:'inline-flex',alignItems:'center',justifyContent:'center',gap:6}}>
                       <ArrowRight size={15}/> {lang==='pt'?'Abrir':'Open'}
                     </button>
+                    {canEdit && <>
                     <button onClick={e=>{e.stopPropagation();setEditProject(project)}}
                       style={{background:'var(--surface2)',border:'1px solid var(--border)',color:'var(--text2)',padding:'9px 12px',borderRadius:8,cursor:'pointer',display:'flex',alignItems:'center'}}
                       title={lang==='pt'?'Editar':'Edit'}><Pencil size={15}/></button>
                     <button onClick={e=>{e.stopPropagation();setDeleteProject(project)}}
                       style={{background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.2)',color:'#f87171',padding:'9px 12px',borderRadius:8,cursor:'pointer',display:'flex',alignItems:'center'}}
                       title={lang==='pt'?'Arquivar':'Archive'}><Trash2 size={15}/></button>
+                    </>}
                   </div>
                 </div>
               )

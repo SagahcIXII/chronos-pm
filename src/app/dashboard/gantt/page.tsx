@@ -2,7 +2,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
-import { useSession } from 'next-auth/react'
+import { useCanEdit } from '@/lib/useCanEdit'
 import { buildOrderedTasks } from '@/lib/taskTree'
 import { Search, Hand, ChevronDown, ChevronRight, Diamond, Zap, Clock } from 'lucide-react'
 
@@ -35,8 +35,7 @@ export default function GanttPage() {
   const [search, setSearch] = useState('')
   const chartRef = useRef<HTMLDivElement>(null)
 
-  const { data: session } = useSession()
-  const editable = ['ADMIN', 'MANAGER'].includes((session?.user as any)?.role)
+  const editable = useCanEdit()
   type DragMode = 'move' | 'resize-l' | 'resize-r' | 'milestone'
   type DragState = { id: string; mode: DragMode; origStart: string | null; origEnd: string | null; startX: number }
   const [drag, setDrag] = useState<DragState | null>(null)

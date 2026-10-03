@@ -2,9 +2,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
-import { useSession } from 'next-auth/react'
-import { buildOrderedTasks } from '@/lib/taskTree'
+import { useCanEdit } from '@/lib/useCanEdit'
 import { workItems } from '@/lib/progress'
+import { buildOrderedTasks } from '@/lib/taskTree'
 import { Paperclip, Search, ClipboardList, ChevronDown, ChevronRight, Diamond, Zap, Clock, Pencil, Trash2, Loader2 } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -64,8 +64,7 @@ const fmtBytes = (n: number | null) => {
 }
 
 function AttachmentsSection({ taskId, pt }: { taskId: string; pt: boolean }) {
-  const { data: session } = useSession()
-  const canEdit = ['ADMIN', 'MANAGER'].includes((session?.user as any)?.role)
+  const canEdit = useCanEdit()
   const [list, setList] = useState<Attachment[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -204,6 +203,8 @@ function TaskModal({ task, tasks, projectId, onClose, onSaved }: {
   const pt = lang === 'pt'
   const groups = tasks.filter(t => t.isGroup)
   const others = tasks.filter(t => t.id !== task?.id)
+  // Grupo com tarefas: progresso e status são consolidados pelo servidor.
+  const autoRollup = form.isGroup && !!task && tasks.some(t => t.parentId === task.id)
 
   const LABEL: React.CSSProperties = { fontSize: 11, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4, display: 'block' }
   const ROW: React.CSSProperties = { display: 'grid', gap: 12 }
@@ -243,7 +244,7 @@ function TaskModal({ task, tasks, projectId, onClose, onSaved }: {
           <div style={{ ...ROW, gridTemplateColumns: '1fr 1fr' }}>
             <div>
               <label style={LABEL}>Status</label>
-              <select className="form-control" value={form.status} onChange={e => set('status', e.target.value)}>
+              <select className="form-control" value={form.status} onChange={e => set('status', e.target.value)} disabled={autoRollup}>
                 <option value="NOT_STARTED">{pt ? 'Não Iniciado' : 'Not Started'}</option>
                 <option value="IN_PROGRESS">{pt ? 'Em Andamento' : 'In Progress'}</option>
                 <option value="COMPLETED">{pt ? 'Concluído' : 'Completed'}</option>
@@ -265,8 +266,13 @@ function TaskModal({ task, tasks, projectId, onClose, onSaved }: {
           {/* Progresso */}
           <div>
             <label style={LABEL}>{pt ? `Progresso: ${form.progress}%` : `Progress: ${form.progress}%`}</label>
-            <input type="range" min={0} max={100} value={form.progress} onChange={e => set('progress', Number(e.target.value))}
+            <input type="range" min={0} max={100} value={form.progress} onChange={e => set('progress', Number(e.target.value))} disabled={autoRollup}
               style={{ width: '100%', accentColor: 'var(--blue)' }} />
+            {autoRollup && (
+              <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+                {pt ? 'Progresso e status do grupo são calculados automaticamente a partir das tarefas dele.' : 'Group progress and status are calculated automatically from its tasks.'}
+              </p>
+            )}
           </div>
 
           {/* Datas planejadas */}
@@ -364,6 +370,7 @@ export default function TasksPage() {
   const PROJECT_ID = activeProject?.id ?? ''
   const tk = t.tasks
   const pt = lang === 'pt'
+  const canEdit = useCanEdit()
 
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
@@ -450,9 +457,11 @@ export default function TasksPage() {
               {leaves.length} {pt ? 'tarefas' : 'tasks'} · {leaves.filter(t => t.status === 'COMPLETED').length} {tk.completed.toLowerCase()} · <span style={{ color: 'var(--red)' }}>{leaves.filter(t => isDelayed(t)).length} {pt ? 'atrasadas' : 'delayed'}</span>
             </p>
           </div>
-          <button className="btn btn-primary btn-sm" onClick={() => setModalTask('new')}>
-            + {pt ? 'Nova Tarefa' : 'New Task'}
-          </button>
+          {canEdit && (
+            <button className="btn btn-primary btn-sm" onClick={() => setModalTask('new')}>
+              + {pt ? 'Nova Tarefa' : 'New Task'}
+            </button>
+          )}
         </div>
 
         {/* Filters */}
@@ -485,7 +494,7 @@ export default function TasksPage() {
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 12, color: 'var(--text3)' }}>
               <ClipboardList size={32} />
               <p style={{ fontSize: 14 }}>{pt ? 'Nenhuma tarefa cadastrada' : 'No tasks yet'}</p>
-              <button className="btn btn-primary btn-sm" onClick={() => setModalTask('new')}>+ {pt ? 'Nova Tarefa' : 'New Task'}</button>
+              {canEdit && <button className="btn btn-primary btn-sm" onClick={() => setModalTask('new')}>+ {pt ? 'Nova Tarefa' : 'New Task'}</button>}
             </div>
           ) : (
             <div className="table-wrap" style={{ flex: 1, overflowY: 'auto' }}>
@@ -532,12 +541,12 @@ export default function TasksPage() {
                         <td><span className={`badge ${sb(task.status)}`}>{sl(task.status)}</span></td>
                         <td><span className={`badge ${pb(task.priority)}`}>{pl(task.priority)}</span></td>
                         <td>
-                          <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+                          {canEdit && <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
                             <button title={pt ? 'Editar' : 'Edit'} onClick={() => setModalTask(task)}
                               style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', color: '#60a5fa', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><Pencil size={13} /></button>
                             <button title={pt ? 'Excluir' : 'Delete'} onClick={() => handleDelete(task.id)} disabled={deleting === task.id}
                               style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><Trash2 size={13} /></button>
-                          </div>
+                          </div>}
                         </td>
                       </tr>
                     )
@@ -599,10 +608,12 @@ export default function TasksPage() {
               </div>
             </>
           )}
-          <hr style={{ borderColor: 'var(--border)' }} />
-          <button className="btn btn-primary btn-sm" style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={() => setModalTask(sel)}>
-            <Pencil size={14} /> {pt ? 'Editar Tarefa' : 'Edit Task'}
-          </button>
+          {canEdit && <>
+            <hr style={{ borderColor: 'var(--border)' }} />
+            <button className="btn btn-primary btn-sm" style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={() => setModalTask(sel)}>
+              <Pencil size={14} /> {pt ? 'Editar Tarefa' : 'Edit Task'}
+            </button>
+          </>}
         </div>
       )}
     </div>

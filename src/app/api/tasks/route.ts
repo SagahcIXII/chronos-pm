@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { computeWeightedProgress } from '@/lib/schedule'
+import { recalculateProjectRollups } from '@/lib/rollup'
 import { requireUser, assertProjectAccess, assertTaskRelations, accessErrorResponse } from '@/lib/access'
 
 const TaskSchema = z.object({
@@ -84,16 +84,10 @@ export async function POST(req: NextRequest) {
       data: { taskId: task.id, authorId: user.id, changeType: 'CREATED', note: 'Tarefa criada' },
     })
 
-    await recalculateProjectProgress(data.projectId)
+    await recalculateProjectRollups(data.projectId)
     return NextResponse.json({ data: task }, { status: 201 })
   } catch (e) {
     const { error, status } = accessErrorResponse(e)
     return NextResponse.json({ error }, { status })
   }
-}
-
-async function recalculateProjectProgress(projectId: string) {
-  const tasks = await prisma.task.findMany({ where: { projectId } })
-  const progress = computeWeightedProgress(tasks)
-  await prisma.project.update({ where: { id: projectId }, data: { progress } })
 }

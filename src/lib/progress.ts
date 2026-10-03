@@ -163,3 +163,50 @@ export function executedAt(tasks: ProgressTask[], pointISO: string, asOfISO: str
   const asOf = asOfISO.slice(0, 10)
   return weightedAverage(workItems(tasks).map(t => ({ w: weightOf(t), p: progressAt(t, point, asOf) })))
 }
+
+// ─── Roll-up de grupos ───────────────────────────────────────
+
+export type RollupTask = {
+  id: string
+  parentId: string | null
+  isGroup: boolean
+  weight: number
+  progress: number
+  status: string
+}
+
+/**
+ * Roll-up de grupos: progresso = fórmula oficial sobre as folhas descendentes
+ * (todos os níveis; subgrupo vazio conta como folha); status = COMPLETED se
+ * todas concluídas, IN_PROGRESS se alguma tem avanço, senão NOT_STARTED.
+ * Grupos sem nada abaixo ficam de fora (mantêm os valores manuais).
+ */
+export function computeGroupRollups(tasks: RollupTask[]) {
+  const children = new Map<string | null, RollupTask[]>()
+  for (const t of tasks) {
+    const arr = children.get(t.parentId)
+    if (arr) arr.push(t)
+    else children.set(t.parentId, [t])
+  }
+
+  const leavesUnder = (id: string, seen = new Set<string>()): RollupTask[] => {
+    if (seen.has(id)) return [] // proteção contra ciclos em dados antigos
+    seen.add(id)
+    return (children.get(id) ?? []).flatMap(c => (children.has(c.id) ? leavesUnder(c.id, seen) : [c]))
+  }
+
+  const result: { id: string; progress: number; status: string }[] = []
+  for (const g of tasks) {
+    if (!g.isGroup) continue
+    const leaves = leavesUnder(g.id)
+    if (!leaves.length) continue
+    const progress = projectProgress(leaves)
+    const status = leaves.every(l => l.status === 'COMPLETED')
+      ? 'COMPLETED'
+      : leaves.some(l => l.progress > 0 || l.status === 'IN_PROGRESS' || l.status === 'COMPLETED')
+        ? 'IN_PROGRESS'
+        : 'NOT_STARTED'
+    result.push({ id: g.id, progress, status })
+  }
+  return result
+}
