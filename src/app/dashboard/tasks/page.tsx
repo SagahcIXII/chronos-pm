@@ -177,14 +177,16 @@ function TaskModal({ task, tasks, projectId, onClose, onSaved }: {
     if (!form.name.trim()) { setError(lang === 'pt' ? 'Nome obrigatório' : 'Name required'); return }
     setSaving(true); setError('')
     try {
+      // Data vazia: na edição envia null (limpa no banco); na criação, omite.
+      const emptyDate = task ? null : undefined
       const payload = {
         ...form,
         projectId: projectId,
         parentId: form.parentId || null,
-        plannedStart: form.plannedStart || undefined,
-        plannedEnd: form.plannedEnd || undefined,
-        actualStart: form.actualStart || undefined,
-        actualEnd: form.actualEnd || undefined,
+        plannedStart: form.plannedStart || emptyDate,
+        plannedEnd: form.plannedEnd || emptyDate,
+        actualStart: form.actualStart || emptyDate,
+        actualEnd: form.actualEnd || emptyDate,
       }
       const url = task ? `/api/tasks/${task.id}` : '/api/tasks'
       const method = task ? 'PUT' : 'POST'
