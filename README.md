@@ -104,17 +104,76 @@ Relatório PDF, Excel, e-mail e banco usam as mesmas funções).
 
 ---
 
-## Perfis e acesso (isolamento por empresa)
+## Empresas e usuários (multi-tenancy)
+
+Cada **empresa cliente** (ex.: BioAmazon) tem os próprios usuários e projetos e
+**só enxerga os dados dela**. Projetos sem empresa são internos da BD7D.
+
+```
+Empresa (Organization)
+ ├── Usuários  ── MANAGER: edita todos os projetos da empresa
+ │              └ CLIENT / VIEWER: só leem e comentam
+ └── Projetos  ── visíveis a todos os usuários da empresa
+ADMIN (BD7D) ── sem empresa, vê e gerencia tudo
+```
+
+### Papéis
 
 | Papel | Pertence a | Vê | Edita |
 |---|---|---|---|
-| ADMIN | — (BD7D) | todos os projetos | tudo; gerencia empresas e usuários |
-| MANAGER | uma empresa | projetos da empresa | todos os projetos da empresa |
-| CLIENT / VIEWER | uma empresa | projetos da empresa | não (pode comentar) |
+| ADMIN | — (BD7D) | todos os projetos de todas as empresas | tudo; cria empresas e usuários |
+| MANAGER | uma empresa | projetos da empresa | todos os projetos da empresa; cria projetos nela |
+| CLIENT / VIEWER | uma empresa | projetos da empresa | não — lê e comenta |
+| MANAGER / CLIENT / VIEWER sem empresa | — | só os projetos internos que criou | conforme o papel |
 
-Cada empresa só enxerga os próprios projetos; projetos sem empresa são internos
-da BD7D. As regras são aplicadas no servidor (`src/lib/access.ts`). Passo a passo
-de cadastro e migração em [GUIA-CLIENTES.md](GUIA-CLIENTES.md).
+### Fluxos (todos feitos pelo ADMIN)
+
+**Nova empresa cliente**
+1. **Usuários → Empresas** → digite o nome → **Criar empresa**.
+2. **Usuários → Novo Usuário** → nome, e-mail, senha inicial, **Papel** e **Empresa**.
+   Quem atualiza o cronograma = **Gerente**; quem só acompanha = **Cliente**/**Visualizador**.
+3. Envie e-mail e senha ao usuário; ele troca a senha em **Trocar senha**.
+
+**Mais um usuário para uma empresa existente** — passo 2 acima. O usuário já
+entra vendo todos os projetos da empresa.
+
+**Projeto da empresa** — o Gerente da empresa cria o projeto e ele já nasce na
+empresa dele. Para mover um projeto existente: **Projetos → editar → Empresa**
+(só o ADMIN altera a empresa de um projeto).
+
+**Editar um usuário** — **Usuários → Editar**: nome, e-mail (é o login), papel,
+empresa, nova senha e ativo/inativo.
+
+**Cortar acesso**
+- Um usuário: **Usuários → Desativar**.
+- A empresa inteira: **Empresas → Desativar** — todos os usuários dela perdem o
+  acesso na hora; projetos e dados ficam preservados e voltam ao reativar.
+
+**Cliente antigo (de antes das empresas)** — vincula o usuário e todos os
+projetos que ele criou a uma empresa (cria a empresa se não existir):
+
+```bash
+npm run db:assign-org -- --org "Empresa" --owner email@cliente.com          # simula
+npm run db:assign-org -- --org "Empresa" --owner email@cliente.com --apply  # grava
+```
+
+**Visão do ADMIN** — a tela **Projetos** agrupa os cards por empresa (A→Z, com
+"BD7D — projetos internos" por último), com contagem e avanço médio; cada grupo
+pode ser recolhido.
+
+### Como o isolamento é garantido
+
+- Toda leitura de projeto passa por `projectVisibilityWhere` / `assertProjectAccess`
+  (`src/lib/access.ts`); tarefas, anexos, comentários, Curva S, Excel e e-mail
+  herdam a regra. Projeto de outra empresa responde **404**, inclusive via API.
+- Papel, empresa e status são lidos **do banco a cada requisição** (não do token
+  da sessão): desativar ou mudar a empresa de alguém vale imediatamente.
+- ADMIN nunca pertence a empresa; projeto criado por não-admin sempre recebe a
+  empresa do usuário, independentemente do que for enviado à API.
+- Esconder botões na interface (`useCanEdit`) é só conveniência — quem bloqueia
+  é sempre a API.
+
+Detalhes e boas práticas em [GUIA-CLIENTES.md](GUIA-CLIENTES.md).
 
 ---
 
@@ -139,10 +198,10 @@ src/
       tasks/             #   tarefas, anexos e comentários
       pdf/               #   relatório PDF, Excel e envio por e-mail
     api/                 # rotas do backend (projetos, tarefas, snapshots,
-                         # usuários, conta, e-mail, export/excel)
+                         # empresas, usuários, conta, e-mail, export/excel)
   components/ThemeToggle.tsx
   lib/
-    access.ts            # autenticação/autorização e validação de vínculos
+    access.ts            # autorização e isolamento por empresa, validação de vínculos
     progress.ts          # fórmulas oficiais de avanço e Curva S
     rollup.ts            # recálculo de grupos/projeto no banco
     schedule.ts          # dias úteis, feriados, formatadores
