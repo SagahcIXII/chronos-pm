@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
-import { executedAt, workItems } from '@/lib/progress'
+import { executedAt, workItems, localTodayISO } from '@/lib/progress'
 import { AlertTriangle } from 'lucide-react'
 
 interface Task {
@@ -14,7 +14,7 @@ interface Task {
   progress: number; status: string; priority: string
 }
 
-const todayISO = new Date().toISOString().slice(0, 10)
+const todayISO = localTodayISO()
 const todayDate = new Date(todayISO)
 
 function monthLabel(date: Date, lang: string): string {

@@ -6,7 +6,7 @@ import nodemailer from 'nodemailer'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireUser, assertProjectAccess, accessErrorResponse } from '@/lib/access'
-import { projectProgress, buildMonthlyCurve, workItems } from '@/lib/progress'
+import { projectProgress, buildMonthlyCurve, workItems, todayISOInZone } from '@/lib/progress'
 import { buildOrderedTasks } from '@/lib/taskTree'
 
 const transporter = nodemailer.createTransport({
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
     const leaves = workItems(ordered)
 
     // ── Datas ────────────────────────────────────────────
-    const refISO = parsed.data.refDate ?? new Date().toISOString().slice(0, 10)
+    const refISO = parsed.data.refDate ?? todayISOInZone()
     const pStart = project.startDate.toISOString().slice(0, 10)
     const pEnd = project.endDate.toISOString().slice(0, 10)
     const fmtDate = (d: Date | string | null | undefined) => {

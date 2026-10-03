@@ -42,3 +42,6 @@ Thumbs.db
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# backups locais do npm run db:recalc
+.recalc-backup-*.json

@@ -6,7 +6,7 @@ import { useLang, LangSwitcher } from '@/lib/i18n'
 import { signOut, useSession } from 'next-auth/react'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { useCanEdit } from '@/lib/useCanEdit'
-import { Plus, Pencil, Trash2, X, Save, AlertCircle, Loader2, Users, KeyRound, FolderOpen, Archive, ArrowRight } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Save, AlertCircle, Loader2, Users, KeyRound, FolderOpen, Archive, ArrowRight, Copy } from 'lucide-react'
 
 interface Project {
   id: string; code: string; name: string; description?: string
@@ -232,10 +232,11 @@ function DeleteModal({ project, onClose, onConfirm, lang }: {
 
 export default function ProjectsPage() {
   const router = useRouter()
-  const { setActiveProject } = useProject()
+  const { setActiveProject, reload: reloadContext } = useProject()
   const { lang } = useLang()
   const { data: session } = useSession()
   const canEdit = useCanEdit()
+  const [duplicating, setDuplicating] = useState<string|null>(null)
 
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
@@ -256,6 +257,21 @@ export default function ProjectsPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // Copia o projeto com tarefas, hierarquia e dependências (progresso zerado).
+  const handleDuplicate = async (p: Project) => {
+    if (!confirm(lang==='pt' ? `Duplicar "${p.name}"? A cópia terá as mesmas tarefas, com progresso zerado.` : `Duplicate "${p.name}"? The copy keeps all tasks, with progress reset.`)) return
+    setDuplicating(p.id)
+    try {
+      const res = await fetch(`/api/projects/${p.id}/duplicate`, { method: 'POST' })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        alert(d.error || (lang==='pt' ? 'Falha ao duplicar' : 'Failed to duplicate'))
+        return
+      }
+      await Promise.all([load(), reloadContext()])
+    } finally { setDuplicating(null) }
+  }
 
   const handleSelect = (p: Project) => {
     setActiveProject({
@@ -437,6 +453,9 @@ export default function ProjectsPage() {
                     <button onClick={e=>{e.stopPropagation();setEditProject(project)}}
                       style={{background:'var(--surface2)',border:'1px solid var(--border)',color:'var(--text2)',padding:'9px 12px',borderRadius:8,cursor:'pointer',display:'flex',alignItems:'center'}}
                       title={lang==='pt'?'Editar':'Edit'}><Pencil size={15}/></button>
+                    <button onClick={e=>{e.stopPropagation();handleDuplicate(project)}} disabled={duplicating===project.id}
+                      style={{background:'var(--surface2)',border:'1px solid var(--border)',color:'var(--text2)',padding:'9px 12px',borderRadius:8,cursor:'pointer',display:'flex',alignItems:'center'}}
+                      title={lang==='pt'?'Duplicar':'Duplicate'}>{duplicating===project.id ? <Loader2 size={15} className="animate-spin"/> : <Copy size={15}/>}</button>
                     <button onClick={e=>{e.stopPropagation();setDeleteProject(project)}}
                       style={{background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.2)',color:'#f87171',padding:'9px 12px',borderRadius:8,cursor:'pointer',display:'flex',alignItems:'center'}}
                       title={lang==='pt'?'Arquivar':'Archive'}><Trash2 size={15}/></button>

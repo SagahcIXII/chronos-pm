@@ -23,14 +23,17 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 }
 
-// POST /api/tasks/[id]/comments — exige acesso de escrita ao projeto da tarefa.
+// POST /api/tasks/[id]/comments — qualquer usuário que VÊ o projeto pode
+// comentar (inclusive CLIENT/VIEWER); editar a tarefa continua restrito.
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const user = await requireUser()
-    await assertTaskAccess(params.id, user, { write: true })
+    await assertTaskAccess(params.id, user)
 
-    const { text } = await req.json()
-    if (!text?.trim()) return NextResponse.json({ error: 'Texto obrigatório' }, { status: 400 })
+    const body = await req.json().catch(() => ({}))
+    const text = typeof body?.text === 'string' ? body.text.trim() : ''
+    if (!text) return NextResponse.json({ error: 'Texto obrigatório' }, { status: 400 })
+    if (text.length > 2000) return NextResponse.json({ error: 'Comentário excede 2000 caracteres' }, { status: 400 })
 
     const comment = await prisma.taskComment.create({
       data: { taskId: params.id, authorId: user.id, text: text.trim() },

@@ -4,6 +4,7 @@ import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
 import { useCanEdit } from '@/lib/useCanEdit'
 import { buildOrderedTasks } from '@/lib/taskTree'
+import { localTodayISO } from '@/lib/progress'
 import { Search, Hand, ChevronDown, ChevronRight, Diamond, Zap, Clock } from 'lucide-react'
 
 type Scale = 'days' | 'weeks' | 'months'
@@ -19,7 +20,7 @@ interface Task {
 }
 
 const fmtS = (s?: string | null) => s ? new Date(s.includes('T') ? s : s + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '—'
-const isDelayed = (t: Task) => t.status !== 'COMPLETED' && t.plannedEnd && t.plannedEnd < new Date().toISOString().slice(0, 10)
+const isDelayed = (t: Task) => t.status !== 'COMPLETED' && t.plannedEnd && t.plannedEnd < localTodayISO()
 
 export default function GanttPage() {
   const { lang, t } = useLang()
@@ -89,7 +90,7 @@ export default function GanttPage() {
     if (!s || !e) return 0
     return Math.max(6, Math.round((new Date(e.includes('T') ? e : e + 'T12:00:00').getTime() - new Date(s.includes('T') ? s : s + 'T12:00:00').getTime()) / 86400000 * PPD))
   }
-  const todayX = d2x(new Date().toISOString().slice(0, 10))
+  const todayX = d2x(localTodayISO())
   const totalW = Math.max(800, d2x(tEnd.toISOString().slice(0, 10)) + 60)
 
   const cols: any[] = []

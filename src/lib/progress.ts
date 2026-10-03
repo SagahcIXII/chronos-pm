@@ -137,6 +137,14 @@ export function localTodayISO(): string {
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
 }
 
+/** Fuso usado pelo servidor (Vercel roda em UTC) quando o cliente não informa a data. */
+export const APP_TIMEZONE = 'America/Manaus'
+
+/** Data de hoje ('YYYY-MM-DD') em um fuso específico — para código de servidor. */
+export function todayISOInZone(timeZone: string = APP_TIMEZONE): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+}
+
 const dayNum = (iso: string) => Date.parse(iso + 'T00:00:00Z') / 86400000
 
 /** Progresso estimado (%) de uma tarefa na data `point` (ver cabeçalho). */

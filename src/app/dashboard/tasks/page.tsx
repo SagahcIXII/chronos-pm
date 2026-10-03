@@ -3,9 +3,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
 import { useCanEdit } from '@/lib/useCanEdit'
-import { workItems } from '@/lib/progress'
+import { workItems, localTodayISO } from '@/lib/progress'
 import { buildOrderedTasks } from '@/lib/taskTree'
-import { Paperclip, Search, ClipboardList, ChevronDown, ChevronRight, Diamond, Zap, Clock, Pencil, Trash2, Loader2 } from 'lucide-react'
+import { Paperclip, Search, ClipboardList, ChevronDown, ChevronRight, Diamond, Zap, Clock, Pencil, Trash2, Loader2, MessageSquare, Send } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface Task {
@@ -51,7 +51,7 @@ const toInput = (s?: string | null) => {
   return s.includes('T') ? s.slice(0, 10) : s
 }
 const isDelayed = (t: Task) =>
-  t.status !== 'COMPLETED' && t.plannedEnd && t.plannedEnd < new Date().toISOString().slice(0, 10)
+  t.status !== 'COMPLETED' && t.plannedEnd && t.plannedEnd < localTodayISO()
 
 // ── Anexos ─────────────────────────────────────────────────────────────────
 interface Attachment { id: string; name: string; url: string; size: number | null; mimeType: string | null; createdAt: string }
@@ -130,6 +130,81 @@ function AttachmentsSection({ taskId, pt }: { taskId: string; pt: boolean }) {
             {uploading ? <Loader2 size={13} className="animate-spin" /> : <Paperclip size={13} />} {uploading ? (pt ? 'Enviando…' : 'Uploading…') : (pt ? 'Adicionar anexo' : 'Add attachment')}
           </button>
           <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 8 }}>{pt ? 'até 4 MB' : 'up to 4 MB'}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Comentários ────────────────────────────────────────────────────────────
+// Qualquer usuário com acesso ao projeto pode comentar (inclusive CLIENT).
+interface Comment { id: string; text: string; createdAt: string; author?: { id: string; name: string } }
+
+function CommentsSection({ taskId, pt }: { taskId: string; pt: boolean }) {
+  const [list, setList] = useState<Comment[]>([])
+  const [loading, setLoading] = useState(true)
+  const [text, setText] = useState('')
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/comments`)
+      if (res.ok) { const j = await res.json(); setList(j.data ?? []) }
+    } finally { setLoading(false) }
+  }, [taskId])
+
+  useEffect(() => { load() }, [load])
+
+  const send = async () => {
+    const value = text.trim()
+    if (!value || sending) return
+    setSending(true); setError('')
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/comments`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: value }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) setError(d.error || (pt ? 'Falha ao comentar' : 'Failed to comment'))
+      else { setText(''); setList(prev => [d.data, ...prev]) }
+    } catch { setError(pt ? 'Erro de conexão' : 'Connection error') }
+    finally { setSending(false) }
+  }
+
+  const fmtWhen = (iso: string) => new Date(iso).toLocaleString(pt ? 'pt-BR' : 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+  return (
+    <div>
+      <p style={{ fontSize: 10.5, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+        <MessageSquare size={12} /> {pt ? 'Comentários' : 'Comments'}{list.length > 0 ? ` (${list.length})` : ''}
+      </p>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        <textarea className="form-control" rows={2} maxLength={2000} value={text} onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+          placeholder={pt ? 'Escreva um comentário… (Enter envia)' : 'Write a comment… (Enter sends)'}
+          style={{ fontSize: 12, resize: 'vertical', flex: 1 }} />
+        <button className="btn btn-primary btn-sm" onClick={send} disabled={sending || !text.trim()} title={pt ? 'Enviar' : 'Send'}
+          style={{ alignSelf: 'flex-end', display: 'inline-flex', alignItems: 'center' }}>
+          {sending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+        </button>
+      </div>
+      {error && <p style={{ fontSize: 12, color: '#f87171', marginBottom: 6 }}>{error}</p>}
+      {loading ? (
+        <span style={{ fontSize: 12, color: 'var(--text3)' }}>…</span>
+      ) : list.length === 0 ? (
+        <span style={{ fontSize: 12, color: 'var(--text3)' }}>{pt ? 'Nenhum comentário ainda.' : 'No comments yet.'}</span>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {list.map(c => (
+            <div key={c.id} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text)' }}>{c.author?.name ?? (pt ? 'Usuário' : 'User')}</span>
+                <span style={{ fontSize: 10.5, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{fmtWhen(c.createdAt)}</span>
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{c.text}</p>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -608,6 +683,8 @@ export default function TasksPage() {
               </div>
             </>
           )}
+          <hr style={{ borderColor: 'var(--border)' }} />
+          <CommentsSection key={sel.id} taskId={sel.id} pt={pt} />
           {canEdit && <>
             <hr style={{ borderColor: 'var(--border)' }} />
             <button className="btn btn-primary btn-sm" style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={() => setModalTask(sel)}>

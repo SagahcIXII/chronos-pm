@@ -2,9 +2,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
-import { projectProgress, buildMonthlyCurve, workItems } from '@/lib/progress'
+import { projectProgress, buildMonthlyCurve, workItems, localTodayISO } from '@/lib/progress'
 import { buildOrderedTasks } from '@/lib/taskTree'
-import { Calendar, Info, AlertTriangle, ClipboardList, Zap, FileText, Printer, Loader2, Mail } from 'lucide-react'
+import { Calendar, Info, AlertTriangle, ClipboardList, Zap, FileText, Printer, Loader2, Mail, FileSpreadsheet } from 'lucide-react'
 
 interface Task {
   id: string; parentId: string | null; isGroup: boolean; isCritical: boolean; isMilestone: boolean
@@ -14,15 +14,7 @@ interface Task {
   progress: number; status: string; priority: string
 }
 
-// Data local correta — evita problema UTC vs fuso horário
-function getLocalDateISO(): string {
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  const d = String(now.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-const todayISO = getLocalDateISO()
+const todayISO = localTodayISO()
 const todayDate = new Date(todayISO)
 
 const fmtDate = (s?: string | null, lang = 'pt') => {
@@ -633,10 +625,17 @@ export default function PDFPage() {
             <h2 style={{fontFamily:'Syne,sans-serif',fontSize:18,fontWeight:800,color:'var(--text)',marginBottom:6}}>{pt?'Gerar Relatório Executivo — Paisagem':'Generate Executive Report — Landscape'}</h2>
             <p style={{color:'var(--text3)',maxWidth:480,margin:'0 auto',fontSize:13}}>{pt?'4 páginas A4 paisagem: capa · KPIs · Curva S com gráfico · tabela de tarefas':'4 A4 landscape pages: cover · KPIs · S-Curve with chart · task table'}</p>
           </div>
-          <button onClick={openReport} disabled={generating||loading} className="btn btn-primary" style={{padding:'12px 32px',fontSize:14,display:'inline-flex',alignItems:'center',gap:8}}>
-            {(loading||generating) ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
-            {loading?(pt?'Carregando dados...':'Loading data...'):generating?(pt?'Abrindo...':'Opening...'):(pt?'Abrir Relatório → Salvar como PDF':'Open Report → Save as PDF')}
-          </button>
+          <div style={{display:'flex',gap:10,flexWrap:'wrap',justifyContent:'center'}}>
+            <button onClick={openReport} disabled={generating||loading} className="btn btn-primary" style={{padding:'12px 32px',fontSize:14,display:'inline-flex',alignItems:'center',gap:8}}>
+              {(loading||generating) ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
+              {loading?(pt?'Carregando dados...':'Loading data...'):generating?(pt?'Abrindo...':'Opening...'):(pt?'Abrir Relatório → Salvar como PDF':'Open Report → Save as PDF')}
+            </button>
+            {/* Planilha gerada no servidor (/api/export/excel): cronograma, resumo e atrasadas */}
+            <a href={`/api/export/excel?projectId=${encodeURIComponent(activeProject.id)}`} download className="btn btn-secondary"
+              style={{padding:'12px 24px',fontSize:14,display:'inline-flex',alignItems:'center',gap:8,textDecoration:'none'}}>
+              <FileSpreadsheet size={15} /> {pt?'Exportar Excel':'Export Excel'}
+            </a>
+          </div>
           <p style={{fontSize:11,color:'var(--text3)'}}>{pt?'Chrome: ⌘+P → Salvar como PDF · A4 · Paisagem · Gráficos em segundo plano':'Chrome: ⌘+P → Save as PDF · A4 · Landscape · Background graphics'}</p>
         </div>
       </div>

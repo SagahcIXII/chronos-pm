@@ -1,358 +1,177 @@
 # Chronos PM — Sistema de Gestão de Cronograma
 
-Sistema profissional de controle de cronograma de projetos com Gráfico de Gantt,
-Curva S, relatórios em PDF e autenticação segura.
+Controle de cronograma de projetos com Gantt, Curva S, relatório executivo
+(PDF, Excel e e-mail), multiusuário com isolamento por cliente.
 
 Desenvolvido por **BD7D Solutions Engenharia LTDA**
 
 ---
 
-## Stack tecnológica
+## Stack
 
-| Camada | Tecnologia | Versão |
-|---|---|---|
-| Framework | Next.js App Router | 14.x |
-| Linguagem | TypeScript | 5.x |
-| ORM | Prisma | 5.x |
-| Banco (dev) | SQLite | — |
-| Banco (prod) | PostgreSQL (Neon) | — |
-| Estilo | Tailwind CSS | 3.x |
-| Autenticação | NextAuth.js + bcrypt | 4.x |
-| Gráficos | Recharts | 2.x |
-| PDF | jsPDF + autoTable | 2.x |
-| Export | SheetJS (xlsx) | 0.18 |
-| Estado | Zustand | 4.x |
-| Forms | React Hook Form + Zod | — |
-| Deploy | Vercel + Neon | gratuito |
-
----
-
-## Pré-requisitos
-
-- Node.js 18+ (recomendado: 20 LTS)
-- npm 9+ ou yarn
-- Git
-- Conta GitHub (você já tem ✅)
-- Conta Vercel — gratuita: https://vercel.com
-- Conta Neon — gratuita: https://neon.tech
-
----
-
-## ═══════════════════════════════════════════
-## PASSO A PASSO — INSTALAÇÃO LOCAL
-## ═══════════════════════════════════════════
-
-### PASSO 1 — Clonar o repositório
-
-```bash
-# Se você já criou o repo no GitHub:
-git clone https://github.com/SEU_USUARIO/chronos-pm.git
-cd chronos-pm
-
-# OU criar do zero na pasta atual:
-cd chronos-pm
-git init
-```
-
----
-
-### PASSO 2 — Instalar dependências
-
-```bash
-npm install
-```
-
-Aguarde o download (~2 min na primeira vez).
-
----
-
-### PASSO 3 — Configurar variáveis de ambiente
-
-```bash
-# Copie o arquivo de exemplo
-cp .env.example .env
-```
-
-Abra o arquivo `.env` e edite:
-
-```env
-# SQLite para desenvolvimento (não precisa mudar)
-DATABASE_URL="file:./dev.db"
-
-# Gere uma chave secreta segura:
-# No terminal: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-NEXTAUTH_SECRET="COLE_A_CHAVE_GERADA_AQUI"
-
-NEXTAUTH_URL="http://localhost:3000"
-```
-
----
-
-### PASSO 4 — Configurar o banco de dados
-
-```bash
-# Gera o cliente Prisma com base no schema
-npm run db:generate
-
-# Cria o banco SQLite e aplica o schema
-npm run db:push
-
-# Popula com dados de demonstração
-npm run db:seed
-```
-
-Você verá no terminal:
-```
-✅ Usuários criados
-✅ Projeto criado: BD7D-2025-001
-✅ Tarefas criadas
-✅ Dependências criadas
-✅ Baseline salva
-🚀 Seed concluído com sucesso!
-
-  Acesso ao sistema:
-  Email:  admin@bd7d.com.br
-  Senha:  chronos2025
-```
-
----
-
-### PASSO 5 — Rodar localmente
-
-```bash
-npm run dev
-```
-
-Acesse: **http://localhost:3000**
-
-Login: `admin@bd7d.com.br` / `chronos2025`
-
----
-
-### Comandos úteis
-
-```bash
-npm run dev          # Servidor de desenvolvimento
-npm run build        # Build de produção
-npm run start        # Servidor de produção local
-npm run db:studio    # Prisma Studio (visual do banco)
-npm run db:reset     # Resetar e repovoar banco
-npm run db:seed      # Apenas repovoar
-```
-
----
-
-## ═══════════════════════════════════════════
-## PASSO A PASSO — DEPLOY NA VERCEL + NEON
-## ═══════════════════════════════════════════
-
-### PASSO 1 — Criar banco PostgreSQL no Neon (gratuito)
-
-1. Acesse https://neon.tech e crie conta
-2. Clique em **"New Project"**
-3. Nome: `chronos-pm`
-4. Região: `US East` ou `AWS São Paulo` (se disponível)
-5. Clique em **"Create project"**
-6. Na tela seguinte, copie a **Connection String** no formato:
-   ```
-   postgresql://USER:PASSWORD@HOST/chronos?sslmode=require
-   ```
-7. Guarde essa string — você vai precisar no próximo passo
-
----
-
-### PASSO 2 — Atualizar o schema para PostgreSQL
-
-Abra `prisma/schema.prisma` e altere:
-
-```prisma
-datasource db {
-  provider = "postgresql"   # ← mude de "sqlite" para "postgresql"
-  url      = env("DATABASE_URL")
-}
-```
-
----
-
-### PASSO 3 — Publicar no GitHub
-
-```bash
-# No diretório do projeto:
-git add .
-git commit -m "feat: Chronos PM inicial"
-
-# Crie o repositório no GitHub (pode ser privado):
-# https://github.com/new → nome: chronos-pm
-
-# Conecte e envie:
-git remote add origin https://github.com/SEU_USUARIO/chronos-pm.git
-git branch -M main
-git push -u origin main
-```
-
----
-
-### PASSO 4 — Criar projeto na Vercel
-
-1. Acesse https://vercel.com/new
-2. Clique em **"Import Git Repository"**
-3. Conecte sua conta GitHub se necessário
-4. Selecione o repositório `chronos-pm`
-5. Clique em **"Import"**
-
----
-
-### PASSO 5 — Configurar variáveis de ambiente na Vercel
-
-Na tela de configuração do projeto, clique em **"Environment Variables"** e adicione:
-
-| Nome | Valor |
+| Camada | Tecnologia |
 |---|---|
-| `DATABASE_URL` | `postgresql://...` (string do Neon copiada no Passo 1) |
-| `NEXTAUTH_SECRET` | Chave forte gerada (use: `openssl rand -base64 32`) |
-| `NEXTAUTH_URL` | `https://SEU-PROJETO.vercel.app` |
+| Framework | Next.js 14 (App Router) + TypeScript |
+| Banco | PostgreSQL (Neon) via Prisma 5 |
+| Autenticação | NextAuth.js (credenciais + bcrypt, sessão JWT de 8 h) |
+| Gráficos | Recharts (Dashboard/Curva S) · SVG próprio (Gantt) |
+| Relatório PDF | HTML gerado no navegador → imprimir / salvar como PDF |
+| Excel | SheetJS (`xlsx`), gerado no servidor |
+| E-mail | Nodemailer (Gmail) |
+| Anexos | Vercel Blob |
+| Validação | Zod |
+| Estilo | Tailwind CSS + CSS próprio (`globals.css`), tema claro/escuro |
+| Deploy | Vercel (deploy automático a cada push na `main`) |
 
 ---
 
-### PASSO 6 — Deploy
+## Instalação local
 
-Clique em **"Deploy"** e aguarde (~2 min).
-
-Após o deploy, no terminal local rode as migrações no banco de produção:
+Pré-requisitos: Node.js 18+ (recomendado 20 LTS) e um banco PostgreSQL
+(recomendado: uma **branch de desenvolvimento** do Neon, para não mexer em produção).
 
 ```bash
-# Defina temporariamente o DATABASE_URL do Neon:
-export DATABASE_URL="postgresql://USER:PASSWORD@HOST/chronos?sslmode=require"
-
-# Aplica o schema no PostgreSQL
-npx prisma db push
-
-# Popula com dados de demonstração
-npm run db:seed
-
-# Restaura variável local
-unset DATABASE_URL
+git clone https://github.com/SagahcIXII/chronos-pm.git
+cd chronos-pm
+npm install
+cp .env.example .env      # preencha as variáveis (veja abaixo)
+npm run db:push           # aplica o schema no banco
+npm run db:seed           # (opcional) dados de demonstração
+npm run dev               # http://localhost:3000
 ```
 
-Ou use o arquivo `.env.production.local` para separar os ambientes.
+### Variáveis de ambiente
 
----
+| Variável | Obrigatória | Para quê |
+|---|---|---|
+| `DATABASE_URL` | sim | Conexão PostgreSQL (Neon) |
+| `NEXTAUTH_SECRET` | sim | Assinatura da sessão — `openssl rand -base64 32` |
+| `NEXTAUTH_URL` | sim | URL base (`http://localhost:3000` ou a da Vercel) |
+| `BLOB_READ_WRITE_TOKEN` | para anexos | Vercel Blob; sem ela o upload responde 503 |
+| `EMAIL_USER` / `EMAIL_PASS` | para e-mail | Conta Gmail + senha de app |
+| `EMAIL_FROM` | não | Remetente exibido no e-mail |
 
-### PASSO 7 — Acessar em produção
-
-Acesse: `https://SEU-PROJETO.vercel.app`
-
-Login: `admin@bd7d.com.br` / `chronos2025`
-
-**Importante:** troque a senha após o primeiro acesso em produção.
-
----
-
-### Deploy automático (CI/CD)
-
-A partir daqui, qualquer push para a branch `main` dispara um novo deploy automaticamente:
+### Comandos
 
 ```bash
-# Qualquer alteração no código:
-git add .
-git commit -m "fix: ajuste no Gantt"
-git push origin main
-# → Vercel detecta e faz deploy automaticamente em ~1 min
+npm run dev          # servidor de desenvolvimento
+npm run build        # build de produção
+npm run db:push      # aplica o schema (prisma db push)
+npm run db:seed      # dados de demonstração
+npm run db:studio    # Prisma Studio
+npm run db:recalc    # recalcula progresso/status de grupos e projetos
+npm run db:reset     # ⚠ APAGA o banco e repovoa com o seed
+```
+
+> ⚠ `db:reset`, `db:push --force-reset` e `db:seed` usam o `DATABASE_URL`
+> do `.env`. Confira para qual banco ele aponta antes de rodar.
+
+---
+
+## Deploy (Vercel + Neon)
+
+1. Crie o projeto no Neon e copie a connection string.
+2. Importe o repositório na Vercel e configure as variáveis da tabela acima.
+3. Aplique o schema no banco de produção uma vez:
+   `DATABASE_URL="postgresql://..." npx prisma db push`
+4. A partir daí, todo push na `main` gera deploy automático.
+
+**Troque a senha padrão do admin no primeiro acesso** (menu *Trocar senha*).
+
+---
+
+## Regras de cálculo
+
+Toda a lógica fica em `src/lib/progress.ts` (fonte única — Dashboard, Curva S,
+Relatório PDF, Excel, e-mail e banco usam as mesmas funções).
+
+- **Tarefas de execução**: tarefas comuns + grupos **sem** subtarefas
+  (ex.: uma "Meta" lançada como grupo e preenchida à mão).
+- **Avanço do projeto** = Σ(peso × progresso) ÷ Σ(peso) das tarefas de execução.
+  Peso vazio ou 0 conta como 1.
+- **Grupo com subtarefas**: progresso e status são calculados automaticamente
+  a partir das tarefas abaixo dele (todos os níveis) sempre que uma tarefa muda.
+- **Curva S — planejado**: linear no tempo (dias decorridos ÷ dias totais do projeto).
+- **Curva S — executado** em uma data = Σ(peso × progresso estimado naquela data)
+  ÷ Σ(peso de **todas** as tarefas). O progresso histórico é estimado de forma
+  linear (concluída: início → término; em andamento: início → hoje). No ponto
+  "hoje", o executado é igual ao avanço do projeto.
+  Pontos lançados no *Histórico Manual* substituem a estimativa da semana.
+- **"Hoje"** é a data local do navegador; no servidor, `America/Manaus`.
+- **Dias úteis** (`src/lib/schedule.ts`): seg–sex, exceto feriados nacionais
+  calculados para qualquer ano (incluindo Sexta-feira Santa e Corpus Christi).
+
+---
+
+## Perfis e acesso
+
+| Papel | Edita? | Vê |
+|---|---|---|
+| ADMIN | sim | todos os projetos; gerencia usuários |
+| MANAGER | sim | projetos que criou ou que lhe foram atribuídos |
+| CLIENT | não (pode comentar) | projetos atribuídos a ele |
+| VIEWER | não (pode comentar) | projetos onde é dono/atribuído |
+
+As regras são aplicadas no servidor (`src/lib/access.ts`). Detalhes e passo a
+passo de cadastro de clientes em [GUIA-CLIENTES.md](GUIA-CLIENTES.md).
+
+---
+
+## Estrutura
+
+```
+prisma/
+  schema.prisma          # modelo do banco (PostgreSQL)
+  seed.ts                # dados de demonstração
+  recalc-rollups.ts      # npm run db:recalc
+src/
+  app/
+    auth/login/          # login
+    projects/            # lista de projetos (criar, editar, duplicar, arquivar)
+    users/               # gestão de usuários (ADMIN)
+    account/             # trocar a própria senha
+    dashboard/           # área do projeto ativo
+      page.tsx           #   dashboard executivo
+      gantt/             #   Gantt com arrastar-e-soltar de datas
+      curves/            #   Curva S + histórico manual
+      tasks/             #   tarefas, anexos e comentários
+      pdf/               #   relatório PDF, Excel e envio por e-mail
+    api/                 # rotas do backend (projetos, tarefas, snapshots,
+                         # usuários, conta, e-mail, export/excel)
+  components/ThemeToggle.tsx
+  lib/
+    access.ts            # autenticação/autorização e validação de vínculos
+    progress.ts          # fórmulas oficiais de avanço e Curva S
+    rollup.ts            # recálculo de grupos/projeto no banco
+    schedule.ts          # dias úteis, feriados, formatadores
+    taskTree.ts          # ordenação cronológica + numeração WBS
+    projectContext.tsx   # projeto ativo
+    useCanEdit.ts        # permissão de escrita na interface
+    i18n.tsx, theme.tsx, auth.ts, prisma.ts
+  middleware.ts          # protege as rotas autenticadas
 ```
 
 ---
 
-## ═══════════════════════════════════════════
-## ESTRUTURA DO PROJETO
-## ═══════════════════════════════════════════
+## Credenciais do seed (somente demonstração)
 
-```
-chronos-pm/
-├── prisma/
-│   ├── schema.prisma          # Modelo do banco (SQLite → PostgreSQL)
-│   └── seed.ts                # Dados de demonstração
-├── src/
-│   ├── app/
-│   │   ├── auth/login/        # Tela de login
-│   │   ├── dashboard/         # Área autenticada
-│   │   │   ├── layout.tsx     # Sidebar + topbar
-│   │   │   ├── page.tsx       # Dashboard executivo
-│   │   │   ├── gantt/         # Gráfico de Gantt
-│   │   │   ├── curves/        # Curva S
-│   │   │   ├── tasks/         # Gestão de tarefas
-│   │   │   └── pdf/           # Relatório PDF
-│   │   └── api/               # API Routes (backend)
-│   │       ├── auth/          # NextAuth
-│   │       ├── projects/      # CRUD projetos
-│   │       ├── tasks/         # CRUD tarefas
-│   │       ├── dashboard/     # KPIs e Curva S
-│   │       ├── reports/pdf/   # Geração de PDF
-│   │       └── export/excel/  # Exportação Excel
-│   ├── components/            # Componentes React
-│   ├── lib/
-│   │   ├── prisma.ts          # Singleton Prisma
-│   │   ├── auth.ts            # Configuração NextAuth
-│   │   └── schedule.ts        # Algoritmos (CPM, Curva S, dias úteis)
-│   ├── types/index.ts         # Tipos TypeScript
-│   ├── stores/                # Zustand stores
-│   └── middleware.ts          # Proteção de rotas
-├── .env.example               # Template de variáveis
-├── .gitignore
-├── next.config.mjs
-├── tailwind.config.ts
-├── tsconfig.json
-└── package.json
-```
+| Perfil | E-mail | Senha |
+|---|---|---|
+| Admin | admin@bd7d.com.br | chronos2025 |
+| Manager | carlos@bd7d.com.br | manager123 |
+
+Novos usuários são criados pela tela **Usuários** (ADMIN).
 
 ---
 
-## ═══════════════════════════════════════════
-## CREDENCIAIS PADRÃO
-## ═══════════════════════════════════════════
+## Evoluções planejadas
 
-| Perfil | Email | Senha | Permissões |
-|---|---|---|---|
-| Admin | admin@bd7d.com.br | chronos2025 | Tudo |
-| Manager | carlos@bd7d.com.br | manager123 | Criar/editar tarefas |
-
-**Troque as senhas em produção antes de compartilhar o sistema.**
-
-Para criar novo usuário (via Prisma Studio):
-```bash
-npm run db:studio
-# Acesse: http://localhost:5555
-# Tabela "users" → Add record
-# Senha deve ser hash bcrypt — gere com:
-node -e "const b=require('bcryptjs');b.hash('nova_senha',12).then(console.log)"
-```
-
----
-
-## ═══════════════════════════════════════════
-## EVOLUÇÕES PLANEJADAS
-## ═══════════════════════════════════════════
-
-### Curto prazo
-- [ ] Seleção dinâmica de projetos (múltiplos projetos)
-- [ ] Drag & drop de datas no Gantt
-- [ ] Upload de anexos (Vercel Blob / S3)
-- [ ] Notificações de atraso por email
-
-### Médio prazo
-- [ ] Múltiplos usuários com controle de acesso por projeto
-- [ ] Baseline dinâmico com comparação visual
+- [ ] Notificações de atraso por e-mail
+- [ ] Baseline com comparação visual no Gantt
 - [ ] Integração com Google Calendar
-- [ ] App mobile (React Native)
-
-### Longo prazo
 - [ ] Gestão de recursos (horas, custos)
-- [ ] Integração com ERP
-- [ ] API pública para integração com outros sistemas
 - [ ] Modo offline (PWA)
 
 ---
 
-## Suporte
-
-BD7D Solutions Engenharia LTDA
-Manaus, Amazonas, Brasil
+BD7D Solutions Engenharia LTDA · Manaus, Amazonas, Brasil

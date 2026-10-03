@@ -11,8 +11,8 @@ e como cadastrar e gerenciar clientes.
 |---|---|---|---|
 | **ADMIN** | Sim | **Todos** os projetos (os seus e os de todos os clientes) | Você / BD7D |
 | **MANAGER** (Gerente) | Sim | **Apenas os projetos que ele mesmo criou** | Cliente que gere os próprios projetos |
-| **CLIENT** (Cliente) | Não (somente leitura) | Apenas os projetos que o admin atribuiu a ele | Cliente que só acompanha um projeto seu |
-| **VIEWER** | Não (somente leitura) | Apenas projetos onde é dono/atribuído | Acesso de leitura genérico |
+| **CLIENT** (Cliente) | Não (somente leitura; pode comentar nas tarefas) | Apenas os projetos que o admin atribuiu a ele | Cliente que só acompanha um projeto seu |
+| **VIEWER** | Não (somente leitura; pode comentar nas tarefas) | Apenas projetos onde é dono/atribuído | Acesso de leitura genérico |
 
 A regra de visibilidade é aplicada **no servidor** (não é apenas esconder na tela):
 quem não é ADMIN só recebe da API os projetos onde é **dono** (`ownerId`) ou **cliente**

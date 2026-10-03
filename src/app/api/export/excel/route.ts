@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { formatDateBR, statusLabel, priorityLabel, isTaskDelayed } from '@/lib/schedule'
 import { requireUser, assertProjectAccess, accessErrorResponse } from '@/lib/access'
 import { buildOrderedTasks } from '@/lib/taskTree'
-import { workItems, projectProgress } from '@/lib/progress'
+import { workItems, projectProgress, todayISOInZone } from '@/lib/progress'
 import * as XLSX from 'xlsx'
 
 export async function GET(req: NextRequest) {
@@ -117,7 +117,7 @@ export async function GET(req: NextRequest) {
   return new NextResponse(buffer, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="Chronos-${project.code}-${new Date().toISOString().slice(0,10)}.xlsx"`,
+      'Content-Disposition': `attachment; filename="Chronos-${project.code}-${todayISOInZone()}.xlsx"`,
     },
   })
 }

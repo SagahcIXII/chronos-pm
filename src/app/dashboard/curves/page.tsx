@@ -6,7 +6,7 @@ import {
 } from 'recharts'
 import { useLang } from '@/lib/i18n'
 import { useProject } from '@/lib/projectContext'
-import { executedAt, workItems } from '@/lib/progress'
+import { executedAt, workItems, localTodayISO } from '@/lib/progress'
 import { useCanEdit } from '@/lib/useCanEdit'
 import { Calendar, AlertTriangle, CheckCircle2, Pin, ChevronUp, ChevronDown, Loader2, Plus, X } from 'lucide-react'
 
@@ -17,15 +17,7 @@ interface Task {
   progress: number; status: string; weight: number
 }
 
-// Data local correta — evita problema de UTC vs fuso horário
-function getLocalDateISO(): string {
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  const d = String(now.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-const todayISO = getLocalDateISO()
+const todayISO = localTodayISO()
 const todayDate = new Date(todayISO)
 
 function weekLabel(date: Date, lang: string): string {
